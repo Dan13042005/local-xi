@@ -82,37 +82,45 @@ export function PlayersPage() {
     }
   }
 
+  // ---------- B1: disable Add Player until form is valid ----------
+  const trimmedName = name.trim();
+  const numberAsNumber = Number(number);
+
+  const numberTaken = players.some((p) => p.number === numberAsNumber);
+
+  const canSubmit =
+    trimmedName.length > 0 &&
+    selectedPositions.length > 0 &&
+    Number.isInteger(numberAsNumber) &&
+    numberAsNumber >= 1 &&
+    numberAsNumber <= 99 &&
+    !numberTaken &&
+    !loading;
+
+  const submitHint =
+    trimmedName.length === 0
+      ? "Enter a name."
+      : selectedPositions.length === 0
+      ? "Select at least one position."
+      : !Number.isInteger(numberAsNumber) || numberAsNumber < 1 || numberAsNumber > 99
+      ? "Shirt number must be 1–99."
+      : numberTaken
+      ? "That shirt number is already taken."
+      : "";
+  // ---------------------------------------------------------------
+
   async function addPlayer(e: React.FormEvent) {
     e.preventDefault();
     setError("");
 
-    const trimmed = name.trim();
-
-    if (!trimmed) {
-      setError("Name is required.");
-      return;
-    }
-
-    if (selectedPositions.length === 0) {
-      setError("Select at least one position.");
-      return;
-    }
-
-    if (!Number.isInteger(number) || number < 1 || number > 99) {
-      setError("Shirt number must be a whole number between 1 and 99.");
-      return;
-    }
-
-    if (players.some((p) => p.number === number)) {
-      setError(`Shirt number ${number} is already taken.`);
-      return;
-    }
+    // extra safety: button should block it, but this prevents any edge case
+    if (!canSubmit) return;
 
     try {
       await createPlayer({
-        name: trimmed,
+        name: trimmedName,
         positions: selectedPositions,
-        number,
+        number: numberAsNumber,
       });
 
       setName("");
@@ -178,9 +186,14 @@ export function PlayersPage() {
             />
           </label>
 
-          <button type="submit" className="primary">
+          <button type="submit" className="primary" disabled={!canSubmit}>
             Add Player
           </button>
+
+          {/* optional hint shown only when button is disabled and no backend error is being shown */}
+          {!canSubmit && !error && submitHint ? (
+            <p className="error">{submitHint}</p>
+          ) : null}
 
           <button
             type="button"
@@ -231,6 +244,7 @@ export function PlayersPage() {
     </section>
   );
 }
+
 
 
 
