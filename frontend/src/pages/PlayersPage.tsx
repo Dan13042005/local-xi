@@ -18,6 +18,10 @@ const POSITIONS = [
   "ST",
 ];
 
+function getErrorMessage(e: unknown): string {
+  return e instanceof Error && e.message ? e.message : "Something went wrong.";
+}
+
 export function PlayersPage() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [loading, setLoading] = useState(true);
@@ -32,6 +36,7 @@ export function PlayersPage() {
   async function refreshPlayers() {
     try {
       const data = await getPlayers();
+
       // keep UI consistent
       const sorted = [...data].sort((a, b) => a.number - b.number);
       setPlayers(sorted);
@@ -39,8 +44,11 @@ export function PlayersPage() {
       // if some selected IDs no longer exist, remove them
       const validIds = new Set(sorted.map((p) => p.id));
       setSelectedIds((prev) => prev.filter((id) => validIds.has(id)));
+
+      // clear any previous load error if we successfully loaded
+      setError("");
     } catch (e) {
-      setError("Failed to load players. Please refresh and try again.");
+      setError(getErrorMessage(e));
     }
   }
 
@@ -78,7 +86,7 @@ export function PlayersPage() {
       setSelectedIds([]);
       await refreshPlayers();
     } catch (e) {
-      setError("Failed to delete players. Please try again.");
+      setError(getErrorMessage(e));
     }
   }
 
@@ -130,7 +138,7 @@ export function PlayersPage() {
 
       await refreshPlayers();
     } catch (e) {
-      setError("Failed to add player. Please try again.");
+      setError(getErrorMessage(e));
     }
   }
 
@@ -244,6 +252,7 @@ export function PlayersPage() {
     </section>
   );
 }
+
 
 
 
