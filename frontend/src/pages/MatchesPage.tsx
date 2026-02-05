@@ -21,9 +21,11 @@ type EditDraft = {
   date: string;
   opponent: string;
   home: boolean;
-  goalsFor: string; // keep as string for typing/editing
+  goalsFor: string; // string for typing/editing
   goalsAgainst: string;
 };
+
+type VenueFilter = "all" | "home" | "away";
 
 export function MatchesPage() {
   const [matches, setMatches] = useState<Match[]>([]);
@@ -43,6 +45,10 @@ export function MatchesPage() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [draft, setDraft] = useState<EditDraft | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // ✅ G1: filters
+  const [query, setQuery] = useState<string>("");
+  const [venueFilter, setVenueFilter] = useState<VenueFilter>("all");
 
   async function refreshMatches() {
     try {
@@ -87,11 +93,24 @@ export function MatchesPage() {
     );
   }
 
-  function toggleSelectAll(checked: boolean) {
-    setSelectedIds(checked ? matches.map((m) => m.id) : []);
+  // ✅ Select-all that works per table (visible rows)
+  function isAllSelectedFor(rows: Match[]) {
+    if (rows.length === 0) return false;
+    const ids = rows.map((m) => m.id);
+    return ids.every((id) => selectedIds.includes(id));
   }
 
-  const allSelected = matches.length > 0 && selectedIds.length === matches.length;
+  function toggleSelectAllFor(rows: Match[], checked: boolean) {
+    const ids = rows.map((m) => m.id);
+    setSelectedIds((prev) => {
+      if (checked) {
+        const merged = new Set([...prev, ...ids]);
+        return Array.from(merged);
+      }
+      // unchecked => remove these ids
+      return prev.filter((id) => !ids.includes(id));
+    });
+  }
 
   const trimmedOpponent = opponent.trim();
   const goalsForParsed = useMemo(() => parseOptionalNonNegativeInt(goalsFor), [goalsFor]);
@@ -169,14 +188,9 @@ export function MatchesPage() {
     return `${m.goalsFor}–${m.goalsAgainst}`;
   }
 
-  function isResult(m: Match) {
-    return m.goalsFor != null && m.goalsAgainst != null;
-  }
-
+  // ---------- F4 helpers ----------
   function computeStats(list: Match[]) {
-    const results = list.filter(isResult);
-
-    const played = results.length;
+    const played = list.length;
 
     let wins = 0;
     let draws = 0;
@@ -184,15 +198,15 @@ export function MatchesPage() {
     let gf = 0;
     let ga = 0;
 
-    for (const m of results) {
-      const goalsFor = m.goalsFor ?? 0;
-      const goalsAgainst = m.goalsAgainst ?? 0;
+    for (const m of list) {
+      const gFor = m.goalsFor ?? 0;
+      const gAgainst = m.goalsAgainst ?? 0;
 
-      gf += goalsFor;
-      ga += goalsAgainst;
+      gf += gFor;
+      ga += gAgainst;
 
-      if (goalsFor > goalsAgainst) wins++;
-      else if (goalsFor === goalsAgainst) draws++;
+      if (gFor > gAgainst) wins++;
+      else if (gFor === gAgainst) draws++;
       else losses++;
     }
 
@@ -202,23 +216,54 @@ export function MatchesPage() {
     return { played, wins, draws, losses, gf, ga, gd, points };
   }
 
-  // ✅ F1: actually compute stats so TS stops warning and we can display it
-  const stats = useMemo(() => computeStats(matches), [matches]);
+  function resultLabel(m: Match): "W" | "D" | "L" | "—" {
+    if (m.goalsFor == null || m.goalsAgainst == null) return "—";
+    if (m.goalsFor > m.goalsAgainst) return "W";
+    if (m.goalsFor === m.goalsAgainst) return "D";
+    return "L";
+  }
 
-  // ✅ Split into Fixtures vs Results
+  function venueLabel(m: Match) {
+    return m.home ? "H" : "A";
+  }
+  // -----------------------------
+
+  // ✅ G1: filter matches first, then split into fixtures/results
+  const filteredMatches = useMemo(() => {
+    const q = query.trim().toLowerCase();
+
+    return matches.filter((m) => {
+      // venue
+      if (venueFilter === "home" && !m.home) return false;
+      if (venueFilter === "away" && m.home) return false;
+
+      if (q.length === 0) return true;
+
+      const score =
+        m.goalsFor != null && m.goalsAgainst != null ? `${m.goalsFor}-${m.goalsAgainst}` : "";
+      const haystack = `${m.opponent} ${m.date} ${score}`.toLowerCase();
+
+      return haystack.includes(q);
+    });
+  }, [matches, query, venueFilter]);
+
   const fixtures = useMemo(() => {
-    return matches
+    return filteredMatches
       .filter((m) => m.goalsFor == null || m.goalsAgainst == null)
       .sort((a, b) => a.date.localeCompare(b.date)); // soonest first
-  }, [matches]);
+  }, [filteredMatches]);
 
   const results = useMemo(() => {
-    return matches
+    return filteredMatches
       .filter((m) => m.goalsFor != null && m.goalsAgainst != null)
       .sort((a, b) => b.date.localeCompare(a.date)); // newest first
-  }, [matches]);
+  }, [filteredMatches]);
 
-  // ---------- E4: inline edit helpers ----------
+  // ✅ F4: season summary + recent form (based on filtered results)
+  const seasonStats = useMemo(() => computeStats(results), [results]);
+  const recentForm = useMemo(() => results.slice(0, 5), [results]);
+
+  // ---------- inline edit helpers ----------
   function startEdit(m: Match) {
     setError("");
     setEditingId(m.id);
@@ -284,11 +329,18 @@ export function MatchesPage() {
       setSaving(false);
     }
   }
-  // -------------------------------------------
+  // ---------------------------------------
+
+  function clearFilters() {
+    setQuery("");
+    setVenueFilter("all");
+  }
 
   if (loading) return <p>Loading matches...</p>;
 
-  function renderTable(rows: Match[]) {
+  function renderTable(rows: Match[], tableKey: "fixtures" | "results") {
+    const allSelectedForThisTable = isAllSelectedFor(rows);
+
     return (
       <table>
         <thead>
@@ -296,8 +348,8 @@ export function MatchesPage() {
             <th>
               <input
                 type="checkbox"
-                checked={allSelected}
-                onChange={(e) => toggleSelectAll(e.target.checked)}
+                checked={allSelectedForThisTable}
+                onChange={(e) => toggleSelectAllFor(rows, e.target.checked)}
               />
             </th>
             <th>Date</th>
@@ -314,7 +366,7 @@ export function MatchesPage() {
             const d = editing ? draft! : null;
 
             return (
-              <tr key={m.id}>
+              <tr key={`${tableKey}-${m.id}`}>
                 <td>
                   <input
                     type="checkbox"
@@ -324,7 +376,6 @@ export function MatchesPage() {
                   />
                 </td>
 
-                {/* Date */}
                 <td>
                   {editing ? (
                     <input
@@ -339,7 +390,6 @@ export function MatchesPage() {
                   )}
                 </td>
 
-                {/* Opponent */}
                 <td>
                   {editing ? (
                     <input
@@ -353,7 +403,6 @@ export function MatchesPage() {
                   )}
                 </td>
 
-                {/* Venue */}
                 <td>
                   {editing ? (
                     <select
@@ -368,11 +417,10 @@ export function MatchesPage() {
                       <option value="away">A</option>
                     </select>
                   ) : (
-                    (m.home ? "H" : "A")
+                    m.home ? "H" : "A"
                   )}
                 </td>
 
-                {/* Result / scores */}
                 <td>
                   {editing ? (
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -407,7 +455,6 @@ export function MatchesPage() {
                   )}
                 </td>
 
-                {/* Edit actions */}
                 <td>
                   {editing ? (
                     <div style={{ display: "flex", gap: 8 }}>
@@ -436,6 +483,10 @@ export function MatchesPage() {
       </table>
     );
   }
+
+  const showingCount = fixtures.length + results.length;
+  const totalCount = matches.length;
+  const filtersActive = query.trim().length > 0 || venueFilter !== "all";
 
   return (
     <section>
@@ -508,24 +559,81 @@ export function MatchesPage() {
         {error ? <p className="error">{error}</p> : null}
       </form>
 
-      {/* ✅ F1: Season Summary */}
-      <div className="card" style={{ marginTop: "1rem" }}>
-        <h3 style={{ marginTop: 0 }}>Season Summary</h3>
-        <p style={{ margin: 0 }}>
-          Played: <strong>{stats.played}</strong> · Wins: <strong>{stats.wins}</strong> · Draws:{" "}
-          <strong>{stats.draws}</strong> · Losses: <strong>{stats.losses}</strong>
-        </p>
-        <p style={{ margin: "0.5rem 0 0" }}>
-          GF: <strong>{stats.gf}</strong> · GA: <strong>{stats.ga}</strong> · GD:{" "}
-          <strong>{stats.gd}</strong> · Points: <strong>{stats.points}</strong>
-        </p>
+      {/* ✅ G1: Search + Venue filter */}
+      <div className="card" style={{ marginTop: 12, padding: "12px 14px" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "end" }}>
+          <label style={{ flex: "1 1 280px" }}>
+            Search
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search opponent, date (YYYY-MM-DD), or score (e.g. 2-1)"
+            />
+          </label>
+
+          <label style={{ width: 180 }}>
+            Venue
+            <select value={venueFilter} onChange={(e) => setVenueFilter(e.target.value as VenueFilter)}>
+              <option value="all">All</option>
+              <option value="home">Home</option>
+              <option value="away">Away</option>
+            </select>
+          </label>
+
+          <button type="button" onClick={clearFilters} disabled={!filtersActive}>
+            Clear filters
+          </button>
+        </div>
+
+        <div style={{ marginTop: 8, opacity: 0.8, fontSize: 13 }}>
+          Showing <strong>{showingCount}</strong> of <strong>{totalCount}</strong> matches.
+        </div>
       </div>
 
+      {/* ✅ F4: Season Summary + Recent Form (filtered) */}
+      <h3 style={{ marginTop: "1rem" }}>Season Summary</h3>
+      {results.length === 0 ? (
+        <p>No results yet — add scores to fixtures to generate stats.</p>
+      ) : (
+        <div className="card" style={{ padding: "12px 14px", marginTop: 8 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 14 }}>
+            <div><strong>Played:</strong> {seasonStats.played}</div>
+            <div><strong>W:</strong> {seasonStats.wins}</div>
+            <div><strong>D:</strong> {seasonStats.draws}</div>
+            <div><strong>L:</strong> {seasonStats.losses}</div>
+            <div><strong>GF:</strong> {seasonStats.gf}</div>
+            <div><strong>GA:</strong> {seasonStats.ga}</div>
+            <div><strong>GD:</strong> {seasonStats.gd}</div>
+            <div><strong>Points:</strong> {seasonStats.points}</div>
+          </div>
+
+          <div style={{ marginTop: 10 }}>
+            <strong>Recent form (last {recentForm.length}):</strong>{" "}
+            {recentForm.map((m) => (
+              <span
+                key={m.id}
+                style={{
+                  display: "inline-block",
+                  padding: "2px 8px",
+                  borderRadius: 999,
+                  border: "1px solid rgba(0,0,0,0.15)",
+                  marginLeft: 6,
+                  fontSize: 13,
+                }}
+                title={`${m.date} vs ${m.opponent} (${venueLabel(m)}) ${formatResult(m)}`}
+              >
+                {resultLabel(m)}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       <h3 style={{ marginTop: "1rem" }}>Upcoming Fixtures</h3>
-      {fixtures.length === 0 ? <p>No upcoming fixtures yet.</p> : renderTable(fixtures)}
+      {fixtures.length === 0 ? <p>No upcoming fixtures yet.</p> : renderTable(fixtures, "fixtures")}
 
       <h3 style={{ marginTop: "2rem" }}>Results</h3>
-      {results.length === 0 ? <p>No results yet.</p> : renderTable(results)}
+      {results.length === 0 ? <p>No results yet.</p> : renderTable(results, "results")}
     </section>
   );
 }
