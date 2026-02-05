@@ -2,7 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import type { Match } from "../models/Match";
 import { createMatch, deleteMatches, getMatches, updateMatch } from "../api/matchesAPI";
 
-type ParsedNumber = { value: number | null; valid: boolean };
+type ParsedNumber = {
+  value: number | null; // null means blank
+  valid: boolean; // false means invalid input
+};
 
 function parseOptionalNonNegativeInt(raw: string): ParsedNumber {
   const trimmed = raw.trim();
@@ -14,56 +17,38 @@ function parseOptionalNonNegativeInt(raw: string): ParsedNumber {
   return { value: n, valid: true };
 }
 
-type VenueFilter = "all" | "home" | "away";
-
-type ScoreDraft = {
-  gf: string;
-  ga: string;
-};
-
 type EditDraft = {
   date: string;
   opponent: string;
   home: boolean;
-  gf: string; // keep as string so empty is allowed
-  ga: string;
+  goalsFor: string; // keep as string for typing/editing
+  goalsAgainst: string;
 };
-
-function isResult(m: Match) {
-  return m.goalsFor != null && m.goalsAgainst != null;
-}
 
 export function MatchesPage() {
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // create form state
+  // add form state
   const [date, setDate] = useState<string>("");
   const [opponent, setOpponent] = useState<string>("");
   const [home, setHome] = useState<boolean>(true);
   const [goalsFor, setGoalsFor] = useState<string>("");
   const [goalsAgainst, setGoalsAgainst] = useState<string>("");
 
-  // selection + errors
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [error, setError] = useState<string>("");
 
-  // filter
-  const [query, setQuery] = useState<string>("");
-  const [venueFilter, setVenueFilter] = useState<VenueFilter>("all");
-
-  // ✅ E2.3 mark-as-played drafts per fixture id
-  const [scoreDrafts, setScoreDrafts] = useState<Record<number, ScoreDraft>>({});
-
-  // ✅ E2.4 edit mode
-  const [editId, setEditId] = useState<number | null>(null);
-  const [editDraft, setEditDraft] = useState<EditDraft | null>(null);
+  // edit state
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [draft, setDraft] = useState<EditDraft | null>(null);
+  const [saving, setSaving] = useState(false);
 
   async function refreshMatches() {
     try {
       const data = await getMatches();
 
-      // sort by date desc (newest first); if same date, opponent A-Z
+      // Sort by date desc (newest first); if same date, opponent A-Z
       const sorted = [...data].sort((a, b) => {
         if (a.date === b.date) return a.opponent.localeCompare(b.opponent);
         return b.date.localeCompare(a.date);
@@ -71,24 +56,14 @@ export function MatchesPage() {
 
       setMatches(sorted);
 
-      // keep selection valid (against full data)
+      // Keep selection valid
       const valid = new Set(sorted.map((m) => m.id));
       setSelectedIds((prev) => prev.filter((id) => valid.has(id)));
 
-      // clean score drafts if match vanished
-      setScoreDrafts((prev) => {
-        const next: Record<number, ScoreDraft> = {};
-        for (const k of Object.keys(prev)) {
-          const id = Number(k);
-          if (valid.has(id)) next[id] = prev[id];
-        }
-        return next;
-      });
-
-      // if editing something that vanished, exit edit mode
-      if (editId != null && !valid.has(editId)) {
-        setEditId(null);
-        setEditDraft(null);
+      // If currently editing a match that no longer exists, exit edit mode
+      if (editingId != null && !valid.has(editingId)) {
+        setEditingId(null);
+        setDraft(null);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load matches.");
@@ -103,34 +78,27 @@ export function MatchesPage() {
         setLoading(false);
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // -------- selection helpers --------
   function toggleSelected(id: number) {
     setSelectedIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
   }
 
-  // merge or remove a set of IDs
-  function toggleMany(ids: number[], checked: boolean) {
-    setSelectedIds((prev) => {
-      const set = new Set(prev);
-      if (checked) {
-        ids.forEach((id) => set.add(id));
-      } else {
-        ids.forEach((id) => set.delete(id));
-      }
-      return Array.from(set);
-    });
+  function toggleSelectAll(checked: boolean) {
+    setSelectedIds(checked ? matches.map((m) => m.id) : []);
   }
-  // ----------------------------------
 
-  // ---------- create validation ----------
+  const allSelected = matches.length > 0 && selectedIds.length === matches.length;
+
   const trimmedOpponent = opponent.trim();
-
   const goalsForParsed = useMemo(() => parseOptionalNonNegativeInt(goalsFor), [goalsFor]);
-  const goalsAgainstParsed = useMemo(() => parseOptionalNonNegativeInt(goalsAgainst), [goalsAgainst]);
+  const goalsAgainstParsed = useMemo(
+    () => parseOptionalNonNegativeInt(goalsAgainst),
+    [goalsAgainst]
+  );
 
   const canSubmit =
     !loading &&
@@ -149,23 +117,23 @@ export function MatchesPage() {
       : !goalsAgainstParsed.valid
       ? "Goals Against must be a whole number 0 or more (or leave blank)."
       : "";
-  // --------------------------------------
 
   async function handleAddMatch(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+
     if (!canSubmit) return;
 
     try {
       await createMatch({
-        date,
+        date, // yyyy-mm-dd
         opponent: trimmedOpponent,
         home,
         goalsFor: goalsForParsed.value,
         goalsAgainst: goalsAgainstParsed.value,
       });
 
-      // reset
+      // reset form
       setDate("");
       setOpponent("");
       setHome(true);
@@ -201,225 +169,278 @@ export function MatchesPage() {
     return `${m.goalsFor}–${m.goalsAgainst}`;
   }
 
-  // ---------- filtered view ----------
-  const filteredMatches = useMemo(() => {
-    const q = query.trim().toLowerCase();
+  function isResult(m: Match) {
+    return m.goalsFor != null && m.goalsAgainst != null;
+  }
 
-    return matches.filter((m) => {
-      if (venueFilter === "home" && !m.home) return false;
-      if (venueFilter === "away" && m.home) return false;
+  function computeStats(list: Match[]) {
+    const results = list.filter(isResult);
 
-      if (!q) return true;
+    const played = results.length;
 
-      const opponentText = (m.opponent ?? "").toLowerCase();
-      const dateText = (m.date ?? "").toLowerCase();
-      const scoreText =
-        m.goalsFor == null || m.goalsAgainst == null ? "" : `${m.goalsFor}-${m.goalsAgainst}`;
+    let wins = 0;
+    let draws = 0;
+    let losses = 0;
+    let gf = 0;
+    let ga = 0;
 
-      return opponentText.includes(q) || dateText.includes(q) || scoreText.includes(q);
-    });
-  }, [matches, query, venueFilter]);
+    for (const m of results) {
+      const goalsFor = m.goalsFor ?? 0;
+      const goalsAgainst = m.goalsAgainst ?? 0;
 
+      gf += goalsFor;
+      ga += goalsAgainst;
+
+      if (goalsFor > goalsAgainst) wins++;
+      else if (goalsFor === goalsAgainst) draws++;
+      else losses++;
+    }
+
+    const gd = gf - ga;
+    const points = wins * 3 + draws;
+
+    return { played, wins, draws, losses, gf, ga, gd, points };
+  }
+
+  // ✅ F1: actually compute stats so TS stops warning and we can display it
+  const stats = useMemo(() => computeStats(matches), [matches]);
+
+  // ✅ Split into Fixtures vs Results
   const fixtures = useMemo(() => {
-    return filteredMatches
-      .filter((m) => !isResult(m))
+    return matches
+      .filter((m) => m.goalsFor == null || m.goalsAgainst == null)
       .sort((a, b) => a.date.localeCompare(b.date)); // soonest first
-  }, [filteredMatches]);
+  }, [matches]);
 
   const results = useMemo(() => {
-    return filteredMatches
-      .filter((m) => isResult(m))
+    return matches
+      .filter((m) => m.goalsFor != null && m.goalsAgainst != null)
       .sort((a, b) => b.date.localeCompare(a.date)); // newest first
-  }, [filteredMatches]);
+  }, [matches]);
 
-  const fixtureIds = useMemo(() => fixtures.map((m) => m.id), [fixtures]);
-  const resultIds = useMemo(() => results.map((m) => m.id), [results]);
-
-  const allFixturesSelected =
-    fixtureIds.length > 0 && fixtureIds.every((id) => selectedIds.includes(id));
-  const allResultsSelected =
-    resultIds.length > 0 && resultIds.every((id) => selectedIds.includes(id));
-
-  // ---------- E2.3: mark as played ----------
-  function getScoreDraft(id: number): ScoreDraft {
-    return scoreDrafts[id] ?? { gf: "", ga: "" };
-  }
-
-  function setScoreDraft(id: number, next: ScoreDraft) {
-    setScoreDrafts((prev) => ({ ...prev, [id]: next }));
-  }
-
-  function validateScoreDraft(d: ScoreDraft): string | null {
-    const gf = parseOptionalNonNegativeInt(d.gf);
-    const ga = parseOptionalNonNegativeInt(d.ga);
-
-    // For "mark played" we REQUIRE both numbers
-    if (d.gf.trim() === "" || d.ga.trim() === "") return "Enter both scores.";
-    if (!gf.valid || !ga.valid) return "Scores must be whole numbers 0 or more.";
-
-    return null;
-  }
-
-  async function handleMarkPlayed(id: number) {
-    setError("");
-
-    const d = getScoreDraft(id);
-    const message = validateScoreDraft(d);
-    if (message) {
-      setError(message);
-      return;
-    }
-
-    const gf = Number(d.gf.trim());
-    const ga = Number(d.ga.trim());
-
-    try {
-      await updateMatch(id, { goalsFor: gf, goalsAgainst: ga });
-      // clear draft after save
-      setScoreDrafts((prev) => {
-        const next = { ...prev };
-        delete next[id];
-        return next;
-      });
-      await refreshMatches();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to mark match as played.");
-    }
-  }
-  // ----------------------------------------
-
-  // ---------- E2.4: edit match ----------
+  // ---------- E4: inline edit helpers ----------
   function startEdit(m: Match) {
     setError("");
-    setEditId(m.id);
-    setEditDraft({
-      date: m.date ?? "",
-      opponent: m.opponent ?? "",
-      home: !!m.home,
-      gf: m.goalsFor == null ? "" : String(m.goalsFor),
-      ga: m.goalsAgainst == null ? "" : String(m.goalsAgainst),
+    setEditingId(m.id);
+    setDraft({
+      date: m.date,
+      opponent: m.opponent,
+      home: m.home,
+      goalsFor: m.goalsFor == null ? "" : String(m.goalsFor),
+      goalsAgainst: m.goalsAgainst == null ? "" : String(m.goalsAgainst),
     });
   }
 
   function cancelEdit() {
-    setEditId(null);
-    setEditDraft(null);
+    setEditingId(null);
+    setDraft(null);
   }
 
-  function validateEditDraft(d: EditDraft): string | null {
-    if (d.date.trim() === "") return "Date is required.";
-    if (d.opponent.trim() === "") return "Opponent is required.";
+  function isEditing(m: Match) {
+    return editingId === m.id && draft != null;
+  }
 
-    // goals are optional, but if one is filled then the other must be filled
-    const gfRaw = d.gf.trim();
-    const gaRaw = d.ga.trim();
+  function validateDraft(d: EditDraft): string {
+    if (d.date.trim().length === 0) return "Date is required.";
+    if (d.opponent.trim().length === 0) return "Opponent is required.";
 
-    const gf = parseOptionalNonNegativeInt(gfRaw);
-    const ga = parseOptionalNonNegativeInt(gaRaw);
-
+    const gf = parseOptionalNonNegativeInt(d.goalsFor);
     if (!gf.valid) return "Goals For must be a whole number 0 or more (or blank).";
+
+    const ga = parseOptionalNonNegativeInt(d.goalsAgainst);
     if (!ga.valid) return "Goals Against must be a whole number 0 or more (or blank).";
 
-    const oneFilled = gfRaw !== "" || gaRaw !== "";
-    const bothFilled = gfRaw !== "" && gaRaw !== "";
-    if (oneFilled && !bothFilled) return "Enter both scores, or leave both blank.";
-
-    return null;
+    return "";
   }
 
-  async function saveEdit() {
-    if (editId == null || editDraft == null) return;
+  async function saveEdit(id: number) {
+    if (!draft) return;
 
     setError("");
-
-    const msg = validateEditDraft(editDraft);
+    const msg = validateDraft(draft);
     if (msg) {
       setError(msg);
       return;
     }
 
-    const gfRaw = editDraft.gf.trim();
-    const gaRaw = editDraft.ga.trim();
+    const gf = parseOptionalNonNegativeInt(draft.goalsFor);
+    const ga = parseOptionalNonNegativeInt(draft.goalsAgainst);
 
-    const patch: Partial<Omit<Match, "id">> = {
-      date: editDraft.date.trim(),
-      opponent: editDraft.opponent.trim(),
-      home: editDraft.home,
-      goalsFor: gfRaw === "" ? null : Number(gfRaw),
-      goalsAgainst: gaRaw === "" ? null : Number(gaRaw),
-    };
-
+    setSaving(true);
     try {
-      await updateMatch(editId, patch);
+      await updateMatch(id, {
+        date: draft.date.trim(),
+        opponent: draft.opponent.trim(),
+        home: draft.home,
+        goalsFor: gf.value,
+        goalsAgainst: ga.value,
+      });
+
       cancelEdit();
       await refreshMatches();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update match.");
+    } finally {
+      setSaving(false);
     }
   }
-  // ------------------------------------
+  // -------------------------------------------
 
   if (loading) return <p>Loading matches...</p>;
+
+  function renderTable(rows: Match[]) {
+    return (
+      <table>
+        <thead>
+          <tr>
+            <th>
+              <input
+                type="checkbox"
+                checked={allSelected}
+                onChange={(e) => toggleSelectAll(e.target.checked)}
+              />
+            </th>
+            <th>Date</th>
+            <th>Opponent</th>
+            <th>H/A</th>
+            <th>Result</th>
+            <th style={{ width: 180 }}>Edit</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {rows.map((m) => {
+            const editing = isEditing(m);
+            const d = editing ? draft! : null;
+
+            return (
+              <tr key={m.id}>
+                <td>
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.includes(m.id)}
+                    onChange={() => toggleSelected(m.id)}
+                    disabled={saving}
+                  />
+                </td>
+
+                {/* Date */}
+                <td>
+                  {editing ? (
+                    <input
+                      type="date"
+                      value={d!.date}
+                      onChange={(e) =>
+                        setDraft((prev) => (prev ? { ...prev, date: e.target.value } : prev))
+                      }
+                    />
+                  ) : (
+                    m.date
+                  )}
+                </td>
+
+                {/* Opponent */}
+                <td>
+                  {editing ? (
+                    <input
+                      value={d!.opponent}
+                      onChange={(e) =>
+                        setDraft((prev) => (prev ? { ...prev, opponent: e.target.value } : prev))
+                      }
+                    />
+                  ) : (
+                    m.opponent
+                  )}
+                </td>
+
+                {/* Venue */}
+                <td>
+                  {editing ? (
+                    <select
+                      value={d!.home ? "home" : "away"}
+                      onChange={(e) =>
+                        setDraft((prev) =>
+                          prev ? { ...prev, home: e.target.value === "home" } : prev
+                        )
+                      }
+                    >
+                      <option value="home">H</option>
+                      <option value="away">A</option>
+                    </select>
+                  ) : (
+                    (m.home ? "H" : "A")
+                  )}
+                </td>
+
+                {/* Result / scores */}
+                <td>
+                  {editing ? (
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <input
+                        type="number"
+                        min={0}
+                        step={1}
+                        value={d!.goalsFor}
+                        onChange={(e) =>
+                          setDraft((prev) => (prev ? { ...prev, goalsFor: e.target.value } : prev))
+                        }
+                        placeholder="GF"
+                        style={{ width: 70 }}
+                      />
+                      <span>–</span>
+                      <input
+                        type="number"
+                        min={0}
+                        step={1}
+                        value={d!.goalsAgainst}
+                        onChange={(e) =>
+                          setDraft((prev) =>
+                            prev ? { ...prev, goalsAgainst: e.target.value } : prev
+                          )
+                        }
+                        placeholder="GA"
+                        style={{ width: 70 }}
+                      />
+                    </div>
+                  ) : (
+                    formatResult(m)
+                  )}
+                </td>
+
+                {/* Edit actions */}
+                <td>
+                  {editing ? (
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button
+                        type="button"
+                        className="primary"
+                        onClick={() => saveEdit(m.id)}
+                        disabled={saving}
+                      >
+                        {saving ? "Saving..." : "Save"}
+                      </button>
+                      <button type="button" onClick={cancelEdit} disabled={saving}>
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <button type="button" onClick={() => startEdit(m)} disabled={saving}>
+                      Edit
+                    </button>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    );
+  }
 
   return (
     <section>
       <h2>Matches</h2>
 
-      {/* Filter */}
-      <div className="card" style={{ marginBottom: 16 }}>
-        <h3 style={{ marginTop: 0 }}>Filter</h3>
-        <div className="form-row">
-          <label>
-            Search
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search opponent, date (YYYY-MM-DD), or score (e.g. 2-1)"
-            />
-          </label>
-
-          <label>
-            Venue
-            <select
-              value={venueFilter}
-              onChange={(e) => setVenueFilter(e.target.value as VenueFilter)}
-            >
-              <option value="all">All</option>
-              <option value="home">Home</option>
-              <option value="away">Away</option>
-            </select>
-          </label>
-
-          <button
-            type="button"
-            className="danger"
-            onClick={() => {
-              setQuery("");
-              setVenueFilter("all");
-            }}
-            disabled={query.trim() === "" && venueFilter === "all"}
-          >
-            Clear Filter
-          </button>
-
-          <button
-            type="button"
-            className="danger"
-            onClick={handleDeleteSelected}
-            disabled={selectedIds.length === 0}
-          >
-            Delete Selected ({selectedIds.length})
-          </button>
-        </div>
-
-        <p style={{ marginTop: 8, opacity: 0.75 }}>
-          Showing <strong>{filteredMatches.length}</strong> of <strong>{matches.length}</strong> matches.
-        </p>
-
-        {error ? <p className="error">{error}</p> : null}
-      </div>
-
-      {/* Add match */}
       <form className="card" onSubmit={handleAddMatch}>
         <div className="form-row">
           <label>
@@ -468,234 +489,49 @@ export function MatchesPage() {
             />
           </label>
 
-          <button type="submit" className="primary" disabled={!canSubmit}>
+          <button type="submit" className="primary" disabled={!canSubmit || saving}>
             Add Match
           </button>
 
-          {!canSubmit && submitHint ? <p className="error">{submitHint}</p> : null}
+          {!canSubmit && !error && submitHint ? <p className="error">{submitHint}</p> : null}
+
+          <button
+            type="button"
+            className="danger"
+            onClick={handleDeleteSelected}
+            disabled={selectedIds.length === 0 || saving}
+          >
+            Delete Selected ({selectedIds.length})
+          </button>
         </div>
+
+        {error ? <p className="error">{error}</p> : null}
       </form>
 
-      {/* Fixtures */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "1rem" }}>
-        <h3 style={{ margin: 0 }}>Upcoming Fixtures</h3>
-
-        <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <input
-            type="checkbox"
-            checked={allFixturesSelected}
-            onChange={(e) => toggleMany(fixtureIds, e.target.checked)}
-            disabled={fixtureIds.length === 0}
-          />
-          Select all fixtures
-        </label>
+      {/* ✅ F1: Season Summary */}
+      <div className="card" style={{ marginTop: "1rem" }}>
+        <h3 style={{ marginTop: 0 }}>Season Summary</h3>
+        <p style={{ margin: 0 }}>
+          Played: <strong>{stats.played}</strong> · Wins: <strong>{stats.wins}</strong> · Draws:{" "}
+          <strong>{stats.draws}</strong> · Losses: <strong>{stats.losses}</strong>
+        </p>
+        <p style={{ margin: "0.5rem 0 0" }}>
+          GF: <strong>{stats.gf}</strong> · GA: <strong>{stats.ga}</strong> · GD:{" "}
+          <strong>{stats.gd}</strong> · Points: <strong>{stats.points}</strong>
+        </p>
       </div>
 
-      {fixtures.length === 0 ? (
-        <p>No upcoming fixtures match your filter.</p>
-      ) : (
-        <table>
-          <thead>
-            <tr>
-              <th></th>
-              <th>Date</th>
-              <th>Opponent</th>
-              <th>H/A</th>
-              <th>Result</th>
-              <th>Mark Played</th>
-              <th>Edit</th>
-            </tr>
-          </thead>
+      <h3 style={{ marginTop: "1rem" }}>Upcoming Fixtures</h3>
+      {fixtures.length === 0 ? <p>No upcoming fixtures yet.</p> : renderTable(fixtures)}
 
-          <tbody>
-            {fixtures.map((m) => {
-              const d = getScoreDraft(m.id);
-              const draftError = validateScoreDraft(d);
-
-              return (
-                <tr key={m.id}>
-                  <td>
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.includes(m.id)}
-                      onChange={() => toggleSelected(m.id)}
-                    />
-                  </td>
-
-                  <td>{m.date}</td>
-                  <td>{m.opponent}</td>
-                  <td>{m.home ? "H" : "A"}</td>
-                  <td>—</td>
-
-                  <td>
-                    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                      <input
-                        type="number"
-                        min={0}
-                        step={1}
-                        value={d.gf}
-                        onChange={(e) => setScoreDraft(m.id, { ...d, gf: e.target.value })}
-                        placeholder="GF"
-                        style={{ width: 80 }}
-                      />
-                      <input
-                        type="number"
-                        min={0}
-                        step={1}
-                        value={d.ga}
-                        onChange={(e) => setScoreDraft(m.id, { ...d, ga: e.target.value })}
-                        placeholder="GA"
-                        style={{ width: 80 }}
-                      />
-                      <button
-                        type="button"
-                        className="primary"
-                        onClick={() => handleMarkPlayed(m.id)}
-                        disabled={!!draftError}
-                      >
-                        Save
-                      </button>
-                    </div>
-                  </td>
-
-                  <td>
-                    <button type="button" onClick={() => startEdit(m)}>
-                      Edit
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      )}
-
-      {/* Results */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "2rem" }}>
-        <h3 style={{ margin: 0 }}>Results</h3>
-
-        <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <input
-            type="checkbox"
-            checked={allResultsSelected}
-            onChange={(e) => toggleMany(resultIds, e.target.checked)}
-            disabled={resultIds.length === 0}
-          />
-          Select all results
-        </label>
-      </div>
-
-      {results.length === 0 ? (
-        <p>No results match your filter.</p>
-      ) : (
-        <table>
-          <thead>
-            <tr>
-              <th></th>
-              <th>Date</th>
-              <th>Opponent</th>
-              <th>H/A</th>
-              <th>Result</th>
-              <th>Edit</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {results.map((m) => (
-              <tr key={m.id}>
-                <td>
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.includes(m.id)}
-                    onChange={() => toggleSelected(m.id)}
-                  />
-                </td>
-                <td>{m.date}</td>
-                <td>{m.opponent}</td>
-                <td>{m.home ? "H" : "A"}</td>
-                <td>{formatResult(m)}</td>
-                <td>
-                  <button type="button" onClick={() => startEdit(m)}>
-                    Edit
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-
-      {/* ✅ Inline edit panel */}
-      {editId != null && editDraft != null ? (
-        <div className="card" style={{ marginTop: 24 }}>
-          <h3 style={{ marginTop: 0 }}>Edit Match (ID: {editId})</h3>
-
-          <div className="form-row">
-            <label>
-              Date
-              <input
-                type="date"
-                value={editDraft.date}
-                onChange={(e) => setEditDraft({ ...editDraft, date: e.target.value })}
-              />
-            </label>
-
-            <label>
-              Opponent
-              <input
-                value={editDraft.opponent}
-                onChange={(e) => setEditDraft({ ...editDraft, opponent: e.target.value })}
-              />
-            </label>
-
-            <label>
-              Venue
-              <select
-                value={editDraft.home ? "home" : "away"}
-                onChange={(e) => setEditDraft({ ...editDraft, home: e.target.value === "home" })}
-              >
-                <option value="home">Home</option>
-                <option value="away">Away</option>
-              </select>
-            </label>
-
-            <label>
-              Goals For (blank = fixture)
-              <input
-                type="number"
-                min={0}
-                step={1}
-                value={editDraft.gf}
-                onChange={(e) => setEditDraft({ ...editDraft, gf: e.target.value })}
-              />
-            </label>
-
-            <label>
-              Goals Against (blank = fixture)
-              <input
-                type="number"
-                min={0}
-                step={1}
-                value={editDraft.ga}
-                onChange={(e) => setEditDraft({ ...editDraft, ga: e.target.value })}
-              />
-            </label>
-
-            <button type="button" className="primary" onClick={saveEdit}>
-              Save Changes
-            </button>
-
-            <button type="button" className="danger" onClick={cancelEdit}>
-              Cancel
-            </button>
-          </div>
-
-          {error ? <p className="error">{error}</p> : null}
-        </div>
-      ) : null}
+      <h3 style={{ marginTop: "2rem" }}>Results</h3>
+      {results.length === 0 ? <p>No results yet.</p> : renderTable(results)}
     </section>
   );
 }
+
+
+
 
 
 
