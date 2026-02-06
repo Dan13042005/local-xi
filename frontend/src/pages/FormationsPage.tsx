@@ -1,43 +1,115 @@
-import { useMemo, useState } from "react";
-import {
-  FORMATIONS,
-  type Formation,
-  type FormationLine,
-  type FormationName,
-  type FormationSlot,
-} from "../models/Formation";
+import { useEffect, useMemo, useState } from "react";
+import type { Player } from "../models/Players";
+import { getPlayers } from "../api/playersAPI";
+import { FORMATIONS, type FormationName, type FormationSlot } from "../models/Formation";
 
-const ORDER: FormationLine[] = ["ATT", "MID", "DEF", "GK"];
-
-const LINE_LABELS: Record<FormationLine, string> = {
-  ATT: "Attack",
-  MID: "Midfield",
-  DEF: "Defence",
-  GK: "Goalkeeper",
-};
+type LineKey = FormationSlot["line"];
+type Assignments = Record<string, number | null>; // slotId -> playerId
 
 export function FormationsPage() {
   const [selected, setSelected] = useState<FormationName>("4-4-2");
 
-  const formation: Formation = FORMATIONS[selected];
+  const [players, setPlayers] = useState<Player[]>([]);
+  const [loadingPlayers, setLoadingPlayers] = useState(true);
+  const [error, setError] = useState<string>("");
+
+  const [assignments, setAssignments] = useState<Assignments>({});
+
+  const formation = FORMATIONS[selected];
+
+  // Load players once
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await getPlayers();
+        const sorted = [...data].sort((a, b) => a.number - b.number);
+        setPlayers(sorted);
+      } catch {
+        setError("Failed to load players.");
+      } finally {
+        setLoadingPlayers(false);
+      }
+    })();
+  }, []);
+
+  // Ensure assignments always match current formation slots (when formation changes)
+  useEffect(() => {
+    const next: Assignments = {};
+    for (const slot of formation.slots) {
+      next[slot.slotId] = assignments[slot.slotId] ?? null;
+    }
+    setAssignments(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected]);
 
   const grouped = useMemo(() => {
-    const lines: Record<FormationLine, FormationSlot[]> = {
-      GK: [],
-      DEF: [],
-      MID: [],
-      ATT: [],
-    };
-
+    const lines: Record<LineKey, FormationSlot[]> = { GK: [], DEF: [], MID: [], ATT: [] };
     for (const slot of formation.slots) lines[slot.line].push(slot);
 
-    // stable order within a line (DEF-1, DEF-2...)
-    for (const line of Object.keys(lines) as FormationLine[]) {
-      lines[line].sort((a, b) => a.slotId.localeCompare(b.slotId));
-    }
+    // ---------- Step 1.5 fix: ensure MID ordering is left-to-right ----------
+    // We'll order MID by slotId numeric suffix so you can control the "shape"
+    // by ordering slots in Formation.ts. If your MID looks wrong, fix the order
+    // in Formation.ts and this will reflect it predictably.
+    const sortBySlotId = (a: FormationSlot, b: FormationSlot) => {
+      const an = Number(a.slotId.split("-")[1] ?? 0);
+      const bn = Number(b.slotId.split("-")[1] ?? 0);
+      return an - bn;
+    };
+
+    lines.GK.sort(sortBySlotId);
+    lines.DEF.sort(sortBySlotId);
+    lines.MID.sort(sortBySlotId);
+    lines.ATT.sort(sortBySlotId);
 
     return lines;
   }, [formation]);
+
+  const usedPlayerIds = useMemo(() => {
+    return new Set(
+      Object.values(assignments)
+        .filter((v): v is number => v != null)
+    );
+  }, [assignments]);
+
+  const assignedCount = useMemo(() => {
+    return Object.values(assignments).filter((v) => v != null).length;
+  }, [assignments]);
+
+  function assign(slotId: string, playerId: number | null) {
+    setError("");
+
+    // If selecting a player already used elsewhere, block it.
+    if (playerId != null) {
+      for (const [sid, pid] of Object.entries(assignments)) {
+        if (sid !== slotId && pid === playerId) {
+          setError("That player is already assigned to another slot.");
+          return;
+        }
+      }
+    }
+
+    setAssignments((prev) => ({ ...prev, [slotId]: playerId }));
+  }
+
+  function clearSlot(slotId: string) {
+    setAssignments((prev) => ({ ...prev, [slotId]: null }));
+  }
+
+  function clearAll() {
+    const next: Assignments = {};
+    for (const slot of formation.slots) next[slot.slotId] = null;
+    setAssignments(next);
+    setError("");
+  }
+
+  function getPlayerLabel(id: number | null) {
+    if (id == null) return "";
+    const p = players.find((x) => x.id === id);
+    if (!p) return "";
+    return `#${p.number} ${p.name}`;
+  }
+
+  if (loadingPlayers) return <p>Loading formations...</p>;
 
   return (
     <section>
@@ -57,129 +129,149 @@ export function FormationsPage() {
               {f}
             </button>
           ))}
+
+          <div style={{ marginLeft: "auto", display: "flex", gap: 10, alignItems: "center" }}>
+            <span style={{ opacity: 0.8 }}>
+              Assigned: <strong>{assignedCount}</strong> / {formation.slots.length}
+            </span>
+            <button type="button" onClick={clearAll}>
+              Clear all
+            </button>
+          </div>
         </div>
+
+        {error ? <p className="error" style={{ marginTop: 10 }}>{error}</p> : null}
       </div>
 
       <h3 style={{ marginTop: "1rem" }}>Pitch preview</h3>
 
-      <div className="card" style={{ padding: 14, marginTop: 8 }}>
-        {/* Pitch container */}
-        <div
-          style={{
-            borderRadius: 16,
-            border: "1px solid rgba(0,0,0,0.12)",
-            padding: 14,
-            position: "relative",
-            overflow: "hidden",
-          }}
-        >
-          {/* Subtle pitch markings (no custom colors) */}
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              pointerEvents: "none",
-              opacity: 0.12,
-              background:
-                "linear-gradient(to bottom, rgba(0,0,0,0.08) 1px, transparent 1px) 0 0 / 100% 25%",
-            }}
+      <div className="card" style={{ padding: 12 }}>
+        <div style={{ display: "grid", gap: 12 }}>
+          <LineRow
+            title="ATT"
+            subtitle="Attack"
+            slots={grouped.ATT}
+            players={players}
+            assignments={assignments}
+            usedPlayerIds={usedPlayerIds}
+            onAssign={assign}
+            onClear={clearSlot}
+            getPlayerLabel={getPlayerLabel}
           />
-          <div
-            style={{
-              position: "absolute",
-              left: "50%",
-              top: 0,
-              bottom: 0,
-              width: 1,
-              transform: "translateX(-50%)",
-              background: "rgba(0,0,0,0.20)",
-              pointerEvents: "none",
-              opacity: 0.18,
-            }}
+          <LineRow
+            title="MID"
+            subtitle="Midfield"
+            slots={grouped.MID}
+            players={players}
+            assignments={assignments}
+            usedPlayerIds={usedPlayerIds}
+            onAssign={assign}
+            onClear={clearSlot}
+            getPlayerLabel={getPlayerLabel}
           />
-
-          {/* Rows */}
-          <div style={{ display: "grid", gap: 16, position: "relative" }}>
-            {ORDER.map((line) => (
-              <PitchRow
-                key={line}
-                title={LINE_LABELS[line]}
-                shortTitle={line}
-                slots={grouped[line]}
-              />
-            ))}
-          </div>
+          <LineRow
+            title="DEF"
+            subtitle="Defence"
+            slots={grouped.DEF}
+            players={players}
+            assignments={assignments}
+            usedPlayerIds={usedPlayerIds}
+            onAssign={assign}
+            onClear={clearSlot}
+            getPlayerLabel={getPlayerLabel}
+          />
+          <LineRow
+            title="GK"
+            subtitle="Goalkeeper"
+            slots={grouped.GK}
+            players={players}
+            assignments={assignments}
+            usedPlayerIds={usedPlayerIds}
+            onAssign={assign}
+            onClear={clearSlot}
+            getPlayerLabel={getPlayerLabel}
+          />
         </div>
 
         <p style={{ marginTop: 12, opacity: 0.8 }}>
-          Step 1.5 complete: pitch-style preview with centred lines. Next: assign players to slots.
+          Next: we can add an “Auto-pick best XI” button and then save this lineup to the backend.
         </p>
       </div>
     </section>
   );
 }
 
-function PitchRow(props: {
+function LineRow(props: {
   title: string;
-  shortTitle: string;
+  subtitle: string;
   slots: FormationSlot[];
+  players: Player[];
+  assignments: Record<string, number | null>;
+  usedPlayerIds: Set<number>;
+  onAssign: (slotId: string, playerId: number | null) => void;
+  onClear: (slotId: string) => void;
+  getPlayerLabel: (id: number | null) => string;
 }) {
-  const { title, shortTitle, slots } = props;
+  const { title, subtitle, slots, players, assignments, usedPlayerIds, onAssign, onClear, getPlayerLabel } = props;
 
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "90px 1fr",
-        gap: 12,
-        alignItems: "center",
-      }}
-    >
-      {/* Line label */}
-      <div style={{ opacity: 0.85 }}>
-        <div style={{ fontWeight: 700 }}>{shortTitle}</div>
-        <div style={{ fontSize: 12, opacity: 0.8 }}>{title}</div>
-      </div>
+    <div>
+      <div style={{ fontWeight: 800, marginBottom: 2 }}>{title}</div>
+      <div style={{ opacity: 0.7, marginBottom: 8 }}>{subtitle}</div>
 
-      {/* Slots on that line */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "center",
-          gap: 14,
-          flexWrap: "wrap",
-          padding: "10px 8px",
-          borderRadius: 14,
-          border: "1px dashed rgba(0,0,0,0.18)",
-        }}
-      >
-        {slots.map((slot) => (
-          <SlotChip key={slot.slotId} slot={slot} />
-        ))}
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+        {slots.map((slot) => {
+          const selectedId = assignments[slot.slotId] ?? null;
+
+          return (
+            <div
+              key={slot.slotId}
+              style={{
+                border: "1px solid rgba(0,0,0,0.15)",
+                borderRadius: 12,
+                padding: "10px 12px",
+                minWidth: 190,
+              }}
+              title={slot.slotId}
+            >
+              <div style={{ fontWeight: 700, marginBottom: 8 }}>{slot.pos}</div>
+
+              <select
+                value={selectedId ?? ""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  onAssign(slot.slotId, v === "" ? null : Number(v));
+                }}
+                style={{ width: "100%" }}
+              >
+                <option value="">— Select player —</option>
+
+                {players.map((p) => {
+                  const taken = usedPlayerIds.has(p.id) && p.id !== selectedId;
+                  return (
+                    <option key={p.id} value={p.id} disabled={taken}>
+                      #{p.number} {p.name} {taken ? "(taken)" : ""}
+                    </option>
+                  );
+                })}
+              </select>
+
+              {selectedId != null ? (
+                <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 13, opacity: 0.8 }}>{getPlayerLabel(selectedId)}</span>
+                  <button type="button" onClick={() => onClear(slot.slotId)}>
+                    Clear
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
 }
 
-function SlotChip({ slot }: { slot: FormationSlot }) {
-  return (
-    <div
-      title={slot.slotId}
-      style={{
-        width: 66,
-        height: 44,
-        display: "grid",
-        placeItems: "center",
-        borderRadius: 999,
-        border: "1px solid rgba(0,0,0,0.18)",
-        fontWeight: 700,
-        userSelect: "none",
-      }}
-    >
-      {slot.pos}
-    </div>
-  );
-}
 
 
 
