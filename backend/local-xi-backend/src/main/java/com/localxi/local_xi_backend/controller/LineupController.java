@@ -6,10 +6,17 @@ import com.localxi.local_xi_backend.repository.LineupRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+
 @CrossOrigin(
         origins = "http://localhost:5173",
         allowedHeaders = "*",
-        methods = {RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.DELETE, RequestMethod.OPTIONS}
+        methods = {
+                RequestMethod.GET,
+                RequestMethod.POST,
+                RequestMethod.PUT,
+                RequestMethod.DELETE,
+                RequestMethod.OPTIONS
+        }
 )
 @RestController
 @RequestMapping("/api/lineups")
@@ -21,7 +28,7 @@ public class LineupController {
         this.repo = repo;
     }
 
-    // Get lineup for a match (returns 404 if none saved yet)
+    // GET lineup for a match (404 if none saved yet)
     @GetMapping("/match/{matchId}")
     public ResponseEntity<?> getForMatch(@PathVariable Long matchId) {
         return repo.findByMatchId(matchId)
@@ -29,7 +36,7 @@ public class LineupController {
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
-    // Create/update lineup for a match
+    // Create/Update lineup for a match (UPSERT)
     @PutMapping("/match/{matchId}")
     public ResponseEntity<?> upsertForMatch(@PathVariable Long matchId, @RequestBody Lineup payload) {
 
@@ -43,7 +50,7 @@ public class LineupController {
         Lineup lineup = repo.findByMatchId(matchId).orElseGet(Lineup::new);
 
         lineup.setMatchId(matchId);
-        lineup.setFormationName(payload.getFormationName());
+        lineup.setFormationName(payload.getFormationName().trim());
         lineup.setCaptainPlayerId(payload.getCaptainPlayerId()); // nullable ok
 
         // Replace slots (simple + reliable)
@@ -59,13 +66,17 @@ public class LineupController {
 
             LineupSlot slot = new LineupSlot();
             slot.setLineup(lineup);
-            slot.setSlotId(s.getSlotId());
-            slot.setPos(s.getPos());
-            slot.setPlayerId(s.getPlayerId()); // nullable ok
+            slot.setSlotId(s.getSlotId().trim());
+            slot.setPos(s.getPos().trim());
+            slot.setPlayerId(s.getPlayerId());       // nullable ok
+            slot.setCaptain(s.isCaptain());          // default false
+            slot.setRating(s.getRating());           // nullable ok
+
             lineup.getSlots().add(slot);
         }
 
         return ResponseEntity.ok(repo.save(lineup));
     }
 }
+
 

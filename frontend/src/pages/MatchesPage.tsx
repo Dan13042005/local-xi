@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Match } from "../models/Match";
 import { createMatch, deleteMatches, getMatches, updateMatch } from "../api/matchesAPI";
+import { LineupEditor } from "../components/LineupEditor";
 
 type ParsedNumber = {
   value: number | null; // null means blank
@@ -46,7 +47,10 @@ export function MatchesPage() {
   const [draft, setDraft] = useState<EditDraft | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // ✅ G1: filters
+  // lineup editor state
+  const [lineupMatchId, setLineupMatchId] = useState<number | null>(null);
+
+  // filters
   const [query, setQuery] = useState<string>("");
   const [venueFilter, setVenueFilter] = useState<VenueFilter>("all");
 
@@ -71,6 +75,11 @@ export function MatchesPage() {
         setEditingId(null);
         setDraft(null);
       }
+
+      // If lineup editor is open for a match that no longer exists, close it
+      if (lineupMatchId != null && !valid.has(lineupMatchId)) {
+        setLineupMatchId(null);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load matches.");
     }
@@ -93,7 +102,7 @@ export function MatchesPage() {
     );
   }
 
-  // ✅ Select-all that works per table (visible rows)
+  // Select-all that works per table (visible rows)
   function isAllSelectedFor(rows: Match[]) {
     if (rows.length === 0) return false;
     const ids = rows.map((m) => m.id);
@@ -107,7 +116,6 @@ export function MatchesPage() {
         const merged = new Set([...prev, ...ids]);
         return Array.from(merged);
       }
-      // unchecked => remove these ids
       return prev.filter((id) => !ids.includes(id));
     });
   }
@@ -188,7 +196,7 @@ export function MatchesPage() {
     return `${m.goalsFor}–${m.goalsAgainst}`;
   }
 
-  // ---------- F4 helpers ----------
+  // ---------- stats helpers ----------
   function computeStats(list: Match[]) {
     const played = list.length;
 
@@ -228,12 +236,11 @@ export function MatchesPage() {
   }
   // -----------------------------
 
-  // ✅ G1: filter matches first, then split into fixtures/results
+  // filter first
   const filteredMatches = useMemo(() => {
     const q = query.trim().toLowerCase();
 
     return matches.filter((m) => {
-      // venue
       if (venueFilter === "home" && !m.home) return false;
       if (venueFilter === "away" && m.home) return false;
 
@@ -259,7 +266,6 @@ export function MatchesPage() {
       .sort((a, b) => b.date.localeCompare(a.date)); // newest first
   }, [filteredMatches]);
 
-  // ✅ F4: season summary + recent form (based on filtered results)
   const seasonStats = useMemo(() => computeStats(results), [results]);
   const recentForm = useMemo(() => results.slice(0, 5), [results]);
 
@@ -357,6 +363,7 @@ export function MatchesPage() {
             <th>H/A</th>
             <th>Result</th>
             <th style={{ width: 180 }}>Edit</th>
+            <th style={{ width: 140 }}>Lineup</th>
           </tr>
         </thead>
 
@@ -476,6 +483,19 @@ export function MatchesPage() {
                     </button>
                   )}
                 </td>
+
+                <td>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      cancelEdit();
+                      setLineupMatchId(m.id);
+                    }}
+                    disabled={saving}
+                  >
+                    Lineup
+                  </button>
+                </td>
               </tr>
             );
           })}
@@ -559,7 +579,7 @@ export function MatchesPage() {
         {error ? <p className="error">{error}</p> : null}
       </form>
 
-      {/* ✅ G1: Search + Venue filter */}
+      {/* Search + Venue filter */}
       <div className="card" style={{ marginTop: 12, padding: "12px 14px" }}>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "end" }}>
           <label style={{ flex: "1 1 280px" }}>
@@ -590,7 +610,7 @@ export function MatchesPage() {
         </div>
       </div>
 
-      {/* ✅ F4: Season Summary + Recent Form (filtered) */}
+      {/* Season Summary + Recent Form (filtered) */}
       <h3 style={{ marginTop: "1rem" }}>Season Summary</h3>
       {results.length === 0 ? (
         <p>No results yet — add scores to fixtures to generate stats.</p>
@@ -634,9 +654,19 @@ export function MatchesPage() {
 
       <h3 style={{ marginTop: "2rem" }}>Results</h3>
       {results.length === 0 ? <p>No results yet.</p> : renderTable(results, "results")}
+
+      {lineupMatchId != null ? (
+        <LineupEditor
+          matchId={lineupMatchId}
+          onClose={() => setLineupMatchId(null)}
+          onSaved={() => refreshMatches()}
+        />
+      ) : null}
     </section>
   );
 }
+
+
 
 
 

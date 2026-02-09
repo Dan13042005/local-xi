@@ -1,31 +1,44 @@
 package com.localxi.local_xi_backend.model;
 
+import com.fasterxml.jackson.annotation.JsonBackReference;
 import jakarta.persistence.*;
 
 @Entity
+@Table(name = "lineup_slot")
 public class LineupSlot {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(optional = false)
+    // e.g. "DEF-1", "MID-3" (stable id)
+    @Column(name = "slot_id", nullable = false)
+    private String slotId;
+
+    // e.g. "LB", "CM", "ST"
+    @Column(nullable = false)
+    private String pos;
+
+    // nullable (empty slot allowed)
+    @Column(name = "player_id")
+    private Long playerId;
+
+    // future feature
+    @Column(name = "is_captain", nullable = false)
+    private boolean isCaptain = false;
+
+    // rating out of 10 (nullable)
+    @Column
+    private Integer rating;
+
+    @JsonBackReference
+    @ManyToOne(optional = false, fetch = FetchType.LAZY)
+    @JoinColumn(name = "lineup_id", nullable = false)
     private Lineup lineup;
-
-    @Column(nullable = false)
-    private String slotId; // "MID-1", "DEF-3", etc
-
-    @Column(nullable = false)
-    private String pos; // "LB", "CDM", etc (label)
-
-    private Long playerId; // nullable => unassigned slot
 
     public LineupSlot() {}
 
     public Long getId() { return id; }
-
-    public Lineup getLineup() { return lineup; }
-    public void setLineup(Lineup lineup) { this.lineup = lineup; }
 
     public String getSlotId() { return slotId; }
     public void setSlotId(String slotId) { this.slotId = slotId; }
@@ -35,5 +48,15 @@ public class LineupSlot {
 
     public Long getPlayerId() { return playerId; }
     public void setPlayerId(Long playerId) { this.playerId = playerId; }
+
+    public boolean isCaptain() { return isCaptain; }
+    public void setCaptain(boolean captain) { isCaptain = captain; }
+
+    public Integer getRating() { return rating; }
+    public void setRating(Integer rating) { this.rating = rating; }
+
+    public Lineup getLineup() { return lineup; }
+    public void setLineup(Lineup lineup) { this.lineup = lineup; }
 }
+
 
