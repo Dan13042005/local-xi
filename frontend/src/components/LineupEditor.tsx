@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Player } from "../models/Players";
 import type { Lineup, LineupSlot } from "../models/Lineup";
-import { FORMATIONS, type FormationName, type FormationSlot } from "../models/Formation";
+import { FORMATIONS, type FormationName, type FormationSlotPreset } from "../models/FormationPresets";
 import { getPlayers } from "../api/playersAPI";
 import { getLineupForMatch, saveLineupForMatch } from "../api/lineupsAPI";
 
@@ -12,7 +12,7 @@ type Props = {
 };
 
 function buildEmptySlots(formation: FormationName): LineupSlot[] {
-  const slots: FormationSlot[] = FORMATIONS[formation].slots;
+  const slots: FormationSlotPreset[] = FORMATIONS[formation].slots;
   return slots.map((s) => ({
     slotId: s.slotId,
     playerId: null,
@@ -210,7 +210,10 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
               }}
             >
               <div style={{ fontWeight: 700 }}>
-                {slotMeta.pos} <span style={{ opacity: 0.6, fontWeight: 400 }}>({slotMeta.slotId})</span>
+                {slotMeta.pos}{" "}
+                <span style={{ opacity: 0.6, fontWeight: 400 }}>
+                  ({slotMeta.slotId})
+                </span>
               </div>
 
               <select
@@ -259,3 +262,4 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
     </div>
   );
 }
+

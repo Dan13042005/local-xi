@@ -342,6 +342,17 @@ export function MatchesPage() {
     setVenueFilter("all");
   }
 
+  // ✅ Lineup helpers
+  function openLineup(matchId: number) {
+    setError("");
+    cancelEdit();
+    setLineupMatchId(matchId);
+  }
+
+  function closeLineup() {
+    setLineupMatchId(null);
+  }
+
   if (loading) return <p>Loading matches...</p>;
 
   function renderTable(rows: Match[], tableKey: "fixtures" | "results") {
@@ -362,8 +373,8 @@ export function MatchesPage() {
             <th>Opponent</th>
             <th>H/A</th>
             <th>Result</th>
-            <th style={{ width: 180 }}>Edit</th>
             <th style={{ width: 140 }}>Lineup</th>
+            <th style={{ width: 180 }}>Edit</th>
           </tr>
         </thead>
 
@@ -463,6 +474,12 @@ export function MatchesPage() {
                 </td>
 
                 <td>
+                  <button type="button" onClick={() => openLineup(m.id)} disabled={saving}>
+                    Lineup
+                  </button>
+                </td>
+
+                <td>
                   {editing ? (
                     <div style={{ display: "flex", gap: 8 }}>
                       <button
@@ -482,19 +499,6 @@ export function MatchesPage() {
                       Edit
                     </button>
                   )}
-                </td>
-
-                <td>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      cancelEdit();
-                      setLineupMatchId(m.id);
-                    }}
-                    disabled={saving}
-                  >
-                    Lineup
-                  </button>
                 </td>
               </tr>
             );
@@ -649,22 +653,20 @@ export function MatchesPage() {
         </div>
       )}
 
+      {/* ✅ Lineup editor renders here */}
+      {lineupMatchId != null ? (
+        <LineupEditor matchId={lineupMatchId} onClose={closeLineup} onSaved={refreshMatches} />
+      ) : null}
+
       <h3 style={{ marginTop: "1rem" }}>Upcoming Fixtures</h3>
       {fixtures.length === 0 ? <p>No upcoming fixtures yet.</p> : renderTable(fixtures, "fixtures")}
 
       <h3 style={{ marginTop: "2rem" }}>Results</h3>
       {results.length === 0 ? <p>No results yet.</p> : renderTable(results, "results")}
-
-      {lineupMatchId != null ? (
-        <LineupEditor
-          matchId={lineupMatchId}
-          onClose={() => setLineupMatchId(null)}
-          onSaved={() => refreshMatches()}
-        />
-      ) : null}
     </section>
   );
 }
+
 
 
 
