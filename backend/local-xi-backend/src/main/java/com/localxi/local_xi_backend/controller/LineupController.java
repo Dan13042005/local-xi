@@ -6,17 +6,12 @@ import com.localxi.local_xi_backend.repository.LineupRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Optional;
 
 @CrossOrigin(
         origins = "http://localhost:5173",
         allowedHeaders = "*",
-        methods = {
-                RequestMethod.GET,
-                RequestMethod.POST,
-                RequestMethod.PUT,
-                RequestMethod.DELETE,
-                RequestMethod.OPTIONS
-        }
+        methods = {RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.DELETE, RequestMethod.OPTIONS}
 )
 @RestController
 @RequestMapping("/api/lineups")
@@ -28,20 +23,20 @@ public class LineupController {
         this.repo = repo;
     }
 
-    // GET lineup for a match (404 if none saved yet)
+    // Get lineup for a match (404 if none saved yet)
     @GetMapping("/match/{matchId}")
     public ResponseEntity<?> getForMatch(@PathVariable Long matchId) {
-        return repo.findByMatchId(matchId)
-                .map(ResponseEntity::ok)
+        Optional<Lineup> found = repo.findByMatchId(matchId);
+        return found.<ResponseEntity<?>>map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
-    // Create/Update lineup for a match (UPSERT)
+    // Create/update lineup for a match
     @PutMapping("/match/{matchId}")
     public ResponseEntity<?> upsertForMatch(@PathVariable Long matchId, @RequestBody Lineup payload) {
 
-        if (payload.getFormationName() == null || payload.getFormationName().trim().isEmpty()) {
-            return ResponseEntity.badRequest().body("Formation name is required");
+        if (payload.getFormationId() == null) {
+            return ResponseEntity.badRequest().body("formationId is required");
         }
         if (payload.getSlots() == null) {
             return ResponseEntity.badRequest().body("Slots are required");
@@ -50,7 +45,7 @@ public class LineupController {
         Lineup lineup = repo.findByMatchId(matchId).orElseGet(Lineup::new);
 
         lineup.setMatchId(matchId);
-        lineup.setFormationName(payload.getFormationName().trim());
+        lineup.setFormationId(payload.getFormationId());
         lineup.setCaptainPlayerId(payload.getCaptainPlayerId()); // nullable ok
 
         // Replace slots (simple + reliable)
@@ -66,11 +61,11 @@ public class LineupController {
 
             LineupSlot slot = new LineupSlot();
             slot.setLineup(lineup);
-            slot.setSlotId(s.getSlotId().trim());
-            slot.setPos(s.getPos().trim());
-            slot.setPlayerId(s.getPlayerId());       // nullable ok
-            slot.setCaptain(s.isCaptain());          // default false
-            slot.setRating(s.getRating());           // nullable ok
+            slot.setSlotId(s.getSlotId());
+            slot.setPos(s.getPos());
+            slot.setPlayerId(s.getPlayerId());     // nullable ok
+            slot.setCaptain(s.isCaptain());
+            slot.setRating(s.getRating());         // nullable ok
 
             lineup.getSlots().add(slot);
         }
@@ -78,5 +73,6 @@ public class LineupController {
         return ResponseEntity.ok(repo.save(lineup));
     }
 }
+
 
 

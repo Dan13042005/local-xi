@@ -1,4 +1,4 @@
-import type { Lineup } from "../models/Lineup.ts";
+import type { Lineup } from "../models/Lineup";
 
 const BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080") as string;
 
@@ -22,3 +22,5 @@ export async function saveLineupForMatch(matchId: number, lineup: Lineup): Promi
   if (!res.ok) throw new Error(await asTextOrJsonError(res));
   return (await res.json()) as Lineup;
 }
+
+
