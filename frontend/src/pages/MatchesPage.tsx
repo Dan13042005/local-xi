@@ -3,6 +3,11 @@ import type { Match } from "../models/Match";
 import { createMatch, deleteMatches, getMatches, updateMatch } from "../api/matchesAPI";
 import { LineupEditor } from "../components/LineupEditor";
 
+// ✅ NEW: formations + lineup summaries
+import type { Formation } from "../models/Formation";
+import { getFormations } from "../api/formationsAPI";
+import { getLineupSummaries } from "../api/lineupsAPI";
+
 type ParsedNumber = {
   value: number | null; // null means blank
   valid: boolean; // false means invalid input
@@ -54,6 +59,17 @@ export function MatchesPage() {
   const [query, setQuery] = useState<string>("");
   const [venueFilter, setVenueFilter] = useState<VenueFilter>("all");
 
+  // ✅ NEW: formation mapping + lineup summaries (matchId -> formationId)
+  const [formations, setFormations] = useState<Formation[]>([]);
+  const [lineupByMatchId, setLineupByMatchId] = useState<Record<number, number>>({});
+
+  function formationLabel(matchId: number): string {
+    const formationId = lineupByMatchId[matchId];
+    if (!formationId) return "—";
+    const f = formations.find((x) => x.id === formationId);
+    return f ? `${f.name} (${f.shape})` : `Saved (#${formationId})`;
+  }
+
   async function refreshMatches() {
     try {
       const data = await getMatches();
@@ -65,6 +81,27 @@ export function MatchesPage() {
       });
 
       setMatches(sorted);
+
+      // ✅ NEW: load formations (only once)
+      if (formations.length === 0) {
+        try {
+          const fs = await getFormations();
+          setFormations(fs);
+        } catch {
+          // still okay — we’ll show "Saved (#id)"
+        }
+      }
+
+      // ✅ NEW: load lineup summaries for all matches shown
+      try {
+        const ids = sorted.map((m) => m.id);
+        const sums = await getLineupSummaries(ids);
+        const map: Record<number, number> = {};
+        for (const s of sums) map[s.matchId] = s.formationId;
+        setLineupByMatchId(map);
+      } catch {
+        setLineupByMatchId({});
+      }
 
       // Keep selection valid
       const valid = new Set(sorted.map((m) => m.id));
@@ -373,6 +410,10 @@ export function MatchesPage() {
             <th>Opponent</th>
             <th>H/A</th>
             <th>Result</th>
+
+            {/* ✅ NEW */}
+            <th>Formation</th>
+
             <th style={{ width: 140 }}>Lineup</th>
             <th style={{ width: 180 }}>Edit</th>
           </tr>
@@ -472,6 +513,9 @@ export function MatchesPage() {
                     formatResult(m)
                   )}
                 </td>
+
+                {/* ✅ NEW */}
+                <td>{formationLabel(m.id)}</td>
 
                 <td>
                   <button type="button" onClick={() => openLineup(m.id)} disabled={saving}>
@@ -666,6 +710,7 @@ export function MatchesPage() {
     </section>
   );
 }
+
 
 
 

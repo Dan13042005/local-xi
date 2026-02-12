@@ -6,7 +6,9 @@ import com.localxi.local_xi_backend.repository.LineupRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.Optional;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @CrossOrigin(
         origins = "http://localhost:5173",
@@ -23,11 +25,38 @@ public class LineupController {
         this.repo = repo;
     }
 
-    // Get lineup for a match (404 if none saved yet)
+    // ✅ NEW: Bulk summaries for matches list
+    // Example: GET /api/lineups/summaries?matchIds=1&matchIds=2
+    @GetMapping("/summaries")
+    public ResponseEntity<List<LineupSummary>> getSummaries(@RequestParam List<Long> matchIds) {
+        if (matchIds == null || matchIds.isEmpty()) {
+            return ResponseEntity.ok(new ArrayList<>());
+        }
+
+        List<Lineup> lineups = repo.findByMatchIdIn(matchIds);
+
+        List<LineupSummary> out = lineups.stream()
+                .map(l -> new LineupSummary(l.getMatchId(), l.getFormationId()))
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(out);
+    }
+
+    public static class LineupSummary {
+        public Long matchId;
+        public Long formationId;
+
+        public LineupSummary(Long matchId, Long formationId) {
+            this.matchId = matchId;
+            this.formationId = formationId;
+        }
+    }
+
+    // Get lineup for a match (returns 404 if none saved yet)
     @GetMapping("/match/{matchId}")
     public ResponseEntity<?> getForMatch(@PathVariable Long matchId) {
-        Optional<Lineup> found = repo.findByMatchId(matchId);
-        return found.<ResponseEntity<?>>map(ResponseEntity::ok)
+        return repo.findByMatchId(matchId)
+                .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
@@ -73,6 +102,7 @@ public class LineupController {
         return ResponseEntity.ok(repo.save(lineup));
     }
 }
+
 
 
 

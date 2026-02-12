@@ -5,7 +5,9 @@ import com.localxi.local_xi_backend.repository.FormationRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @CrossOrigin(
         origins = "http://localhost:5173",
@@ -29,14 +31,9 @@ public class FormationController {
 
     @PostMapping
     public ResponseEntity<?> createFormation(@RequestBody Formation formation) {
-        if (formation.getName() == null || formation.getName().trim().isEmpty()) {
-            return ResponseEntity.badRequest().body("Formation name is required");
-        }
-        if (formation.getShape() == null || formation.getShape().trim().isEmpty()) {
-            return ResponseEntity.badRequest().body("Formation shape is required");
-        }
-        if (formation.getSlots() == null || formation.getSlots().isEmpty()) {
-            return ResponseEntity.badRequest().body("Formation must include slots");
+        String validation = validateFormation(formation);
+        if (!validation.isEmpty()) {
+            return ResponseEntity.badRequest().body(validation);
         }
 
         Formation saved = repo.save(formation);
@@ -51,14 +48,9 @@ public class FormationController {
                     if (patch.getShape() != null) existing.setShape(patch.getShape());
                     if (patch.getSlots() != null) existing.setSlots(patch.getSlots());
 
-                    if (existing.getName() == null || existing.getName().trim().isEmpty()) {
-                        return ResponseEntity.badRequest().body("Formation name is required");
-                    }
-                    if (existing.getShape() == null || existing.getShape().trim().isEmpty()) {
-                        return ResponseEntity.badRequest().body("Formation shape is required");
-                    }
-                    if (existing.getSlots() == null || existing.getSlots().isEmpty()) {
-                        return ResponseEntity.badRequest().body("Formation must include slots");
+                    String validation = validateFormation(existing);
+                    if (!validation.isEmpty()) {
+                        return ResponseEntity.badRequest().body(validation);
                     }
 
                     return ResponseEntity.ok(repo.save(existing));
@@ -75,7 +67,38 @@ public class FormationController {
         return ResponseEntity.ok().build();
     }
 
+    // ✅ centralised validation (slotId + position required)
+    private String validateFormation(Formation formation) {
+        if (formation.getName() == null || formation.getName().trim().isEmpty()) {
+            return "Formation name is required";
+        }
+        if (formation.getShape() == null || formation.getShape().trim().isEmpty()) {
+            return "Formation shape is required";
+        }
+        if (formation.getSlots() == null || formation.getSlots().isEmpty()) {
+            return "Formation must include slots";
+        }
+
+        // slotId required + unique, position required
+        Set<String> seen = new HashSet<>();
+        for (var s : formation.getSlots()) {
+            if (s.getSlotId() == null || s.getSlotId().trim().isEmpty()) {
+                return "Each slot must include slotId";
+            }
+            if (s.getPosition() == null || s.getPosition().trim().isEmpty()) {
+                return "Each slot must include position";
+            }
+            String key = s.getSlotId().trim();
+            if (!seen.add(key)) {
+                return "slotId must be unique within a formation";
+            }
+        }
+
+        return "";
+    }
+
     public static class IdsRequest {
         public List<Long> ids;
     }
 }
+

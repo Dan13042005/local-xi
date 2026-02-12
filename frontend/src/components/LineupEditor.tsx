@@ -12,21 +12,18 @@ type Props = {
   onSaved?: () => void;
 };
 
-function buildEmptySlotsFromFormation(f: Formation): LineupSlot[] {
-  return (f.slots ?? []).map((s, idx) => ({
-    slotId: `SLOT-${idx + 1}`, // fallback if you don’t have slot ids in FormationSlot
-    pos: s.position,
+function buildEmptySlots(formation: Formation): LineupSlot[] {
+  return (formation.slots ?? []).map((s) => ({
+    slotId: s.slotId,          // ✅ from DB
+    pos: s.position,           // label shown in UI
     playerId: null,
     isCaptain: false,
     rating: null,
   }));
 }
 
-// If you DO have stable slot ids in formation slots, use them instead:
-// slotId: s.slotId
-
-function mergeSlotsFromFormation(f: Formation, existing?: LineupSlot[]): LineupSlot[] {
-  const base = buildEmptySlotsFromFormation(f);
+function mergeSlots(formation: Formation, existing: LineupSlot[] | undefined): LineupSlot[] {
+  const base = buildEmptySlots(formation);
   if (!existing || existing.length === 0) return base;
 
   const byId = new Map(existing.map((s) => [s.slotId, s]));
@@ -59,7 +56,7 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
     [formations, formationId]
   );
 
-  // prevent duplicate players in dropdowns
+  // prevent duplicate players
   const selectedPlayerIds = useMemo(() => {
     const set = new Set<number>();
     for (const s of slots) if (s.playerId != null) set.add(s.playerId);
@@ -79,26 +76,24 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
         ]);
 
         setPlayers([...ps].sort((a, b) => a.number - b.number));
-
         const sortedFormations = [...fs].sort((a, b) => a.name.localeCompare(b.name));
         setFormations(sortedFormations);
 
-        const firstFormationId = sortedFormations[0]?.id ?? null;
+        // decide starting formation
+        let initialFormationId: number | null =
+          existing?.formationId ?? sortedFormations[0]?.id ?? null;
 
-        if (existing) {
-          // existing already saved -> use its formationId
-          const fid = existing.formationId ?? firstFormationId;
-          setFormationId(fid);
+        setFormationId(initialFormationId);
 
-          const f = sortedFormations.find((x) => x.id === fid) ?? null;
-          if (f) setSlots(mergeSlotsFromFormation(f, existing.slots));
-          else setSlots(existing.slots ?? []);
+        if (initialFormationId != null) {
+          const f = sortedFormations.find((x) => x.id === initialFormationId) ?? null;
+          if (f) {
+            setSlots(mergeSlots(f, existing?.slots));
+          } else {
+            setSlots([]);
+          }
         } else {
-          // no lineup saved -> default to first formation
-          setFormationId(firstFormationId);
-
-          const f = sortedFormations.find((x) => x.id === firstFormationId) ?? null;
-          setSlots(f ? buildEmptySlotsFromFormation(f) : []);
+          setSlots([]);
         }
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load lineup data.");
@@ -125,17 +120,16 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
     setError("");
     setFormationId(nextId);
 
-    const f = formations.find((x) => x.id === nextId) ?? null;
+    const f = formations.find((x) => x.id === nextId);
     if (!f) {
       setSlots([]);
       return;
     }
-
-    setSlots((prev) => mergeSlotsFromFormation(f, prev));
+    setSlots((prev) => mergeSlots(f, prev));
   }
 
   function validate(): string {
-    if (formationId == null) return "Select a formation.";
+    if (!selectedFormation) return "Select a formation first.";
 
     const captain = slots.find((s) => s.isCaptain);
     if (captain && captain.playerId == null) return "Captain must have a player assigned.";
@@ -157,12 +151,11 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
       setError(msg);
       return;
     }
+    if (!selectedFormation) return;
 
-    const captain = slots.find((s) => s.isCaptain);
     const payload: Lineup = {
       matchId,
-      formationId: formationId!, // validated above
-      captainPlayerId: captain?.playerId ?? null,
+      formationId: selectedFormation.id,
       slots,
     };
 
@@ -193,7 +186,7 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
         <div>
           <strong>Lineup for match #{matchId}</strong>
           <div style={{ opacity: 0.8, fontSize: 13, marginTop: 4 }}>
-            Assign players + captain. Ratings will come later.
+            Select a saved formation, assign players + captain.
           </div>
         </div>
 
@@ -204,80 +197,87 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
 
       {error ? <p className="error" style={{ marginTop: 10 }}>{error}</p> : null}
 
-      <div style={{ marginTop: 12 }}>
-        <label style={{ display: "grid", gap: 6, maxWidth: 420 }}>
-          <strong>Formation</strong>
+      <div style={{ marginTop: 12, display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
+        <label style={{ width: 280 }}>
+          Formation
           <select
             value={formationId ?? ""}
             onChange={(e) => changeFormation(Number(e.target.value))}
             disabled={saving || formations.length === 0}
           >
             {formations.length === 0 ? (
-              <option value="">No formations available</option>
-            ) : null}
-
-            {formations.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.name} ({f.shape})
-              </option>
-            ))}
+              <option value="">No formations found</option>
+            ) : (
+              formations.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.name} ({f.shape})
+                </option>
+              ))
+            )}
           </select>
         </label>
-
-        {selectedFormation ? (
-          <div style={{ marginTop: 8, opacity: 0.8, fontSize: 13 }}>
-            Slots: {selectedFormation.slots?.length ?? 0}
-          </div>
-        ) : null}
       </div>
 
-      <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-        {slots.map((slot) => (
-          <div
-            key={slot.slotId}
-            style={{
-              display: "grid",
-              gridTemplateColumns: "120px 1fr 140px",
-              gap: 10,
-              alignItems: "center",
-            }}
-          >
-            <div style={{ fontWeight: 700 }}>{slot.pos}</div>
+      {!selectedFormation ? (
+        <p style={{ marginTop: 12, opacity: 0.8 }}>
+          Create a formation first in the Formations page.
+        </p>
+      ) : (
+        <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+          {selectedFormation.slots.map((slotMeta) => {
+            const slot = slots.find((s) => s.slotId === slotMeta.slotId)!;
 
-            <select
-              value={slot.playerId ?? ""}
-              onChange={(e) => {
-                const v = e.target.value;
-                setPlayer(slot.slotId, v === "" ? null : Number(v));
-              }}
-              disabled={saving}
-            >
-              <option value="">— Unassigned —</option>
-              {players.map((p) => {
-                const takenByOtherSlot = p.id !== slot.playerId && selectedPlayerIds.has(p.id);
-                return (
-                  <option key={p.id} value={p.id} disabled={takenByOtherSlot}>
-                    #{p.number} {p.name} ({p.positions.join(", ")})
-                  </option>
-                );
-              })}
-            </select>
+            return (
+              <div
+                key={slotMeta.slotId}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "120px 1fr 140px",
+                  gap: 10,
+                  alignItems: "center",
+                }}
+              >
+                <div style={{ fontWeight: 700 }}>
+                  {slotMeta.position}{" "}
+                  <span style={{ opacity: 0.6, fontWeight: 400 }}>({slotMeta.slotId})</span>
+                </div>
 
-            <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <input
-                type="checkbox"
-                checked={slot.isCaptain}
-                onChange={() => setCaptain(slot.slotId)}
-                disabled={saving}
-              />
-              Captain
-            </label>
-          </div>
-        ))}
-      </div>
+                <select
+                  value={slot.playerId ?? ""}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setPlayer(slotMeta.slotId, v === "" ? null : Number(v));
+                  }}
+                  disabled={saving}
+                >
+                  <option value="">— Unassigned —</option>
+                  {players.map((p) => {
+                    const takenByOtherSlot = p.id !== slot.playerId && selectedPlayerIds.has(p.id);
+                    return (
+                      <option key={p.id} value={p.id} disabled={takenByOtherSlot}>
+                        #{p.number} {p.name} ({p.positions.join(", ")})
+                      </option>
+                    );
+                  })}
+                </select>
+
+                <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <input
+                    type="checkbox"
+                    checked={slot.isCaptain}
+                    onChange={() => setCaptain(slotMeta.slotId)}
+                    disabled={saving}
+                  />
+                  Captain
+                </label>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       <div style={{ marginTop: 14, display: "flex", gap: 10 }}>
-        <button type="button" className="primary" onClick={handleSave} disabled={saving}>
+        <button type="button" className="primary" onClick={handleSave} disabled={saving || !selectedFormation}>
           {saving ? "Saving..." : "Save Lineup"}
         </button>
         <button type="button" onClick={onClose} disabled={saving}>
@@ -287,6 +287,7 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
     </div>
   );
 }
+
 
 
 

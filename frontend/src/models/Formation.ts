@@ -1,15 +1,16 @@
-// frontend/src/models/Formation.ts
 export type FormationSlot = {
-  position: string;      // "GK", "LB", "CB", etc
-  playerId: number | null;
+  slotId: string;          // ✅ stable id, e.g. "MID-2"
+  position: string;        // label shown in UI, e.g. "GK", "LB", "CM"
+  playerId: number | null; // optional (can be unused for now)
 };
 
 export type Formation = {
   id: number;
   name: string;
-  shape: string;         // e.g. "4-4-2"
+  shape: string; // e.g. "4-4-2"
   slots: FormationSlot[];
 };
+
 
 
 
