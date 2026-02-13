@@ -1,9 +1,11 @@
+// frontend/src/api/lineupsAPI.ts
 import type { Lineup } from "../models/Lineup";
 
 const BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080") as string;
 
-function asTextOrJsonError(res: Response): Promise<string> {
-  return res.text().then((t) => t || `${res.status} ${res.statusText}`);
+async function asTextOrJsonError(res: Response): Promise<string> {
+  const text = await res.text();
+  return text || `Request failed (${res.status}) ${res.statusText}`;
 }
 
 export async function getLineupForMatch(matchId: number): Promise<Lineup | null> {
@@ -23,17 +25,6 @@ export async function saveLineupForMatch(matchId: number, lineup: Lineup): Promi
   return (await res.json()) as Lineup;
 }
 
-// ✅ NEW: summaries
-export type LineupSummary = { matchId: number; formationId: number };
-
-export async function getLineupSummaries(matchIds: number[]): Promise<LineupSummary[]> {
-  if (matchIds.length === 0) return [];
-
-  const qs = matchIds.map((id) => `matchIds=${encodeURIComponent(id)}`).join("&");
-  const res = await fetch(`${BASE_URL}/api/lineups/summaries?${qs}`);
-  if (!res.ok) throw new Error(await asTextOrJsonError(res));
-  return (await res.json()) as LineupSummary[];
-}
 
 
 

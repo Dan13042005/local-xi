@@ -8,38 +8,25 @@ type LineKey = "ATT" | "AM" | "MID" | "DM" | "DEF" | "GK";
 function guessLine(position: string): LineKey {
   const p = position.toUpperCase().trim();
 
-  // Goalkeeper
   if (p === "GK") return "GK";
 
   // Defence
-  if (["LB", "RB", "CB", "LCB", "RCB", "LWB", "RWB"].includes(p)) {
-    return "DEF";
-  }
+  if (["LB", "RB", "CB", "LCB", "RCB", "LWB", "RWB"].includes(p)) return "DEF";
 
   // Defensive midfield
-  if (["CDM", "DM", "LDM", "RDM"].includes(p)) {
-    return "DM";
-  }
+  if (["CDM", "DM", "LDM", "RDM"].includes(p)) return "DM";
 
   // Attacking midfield (includes wide mids)
-  if (["CAM", "AM", "LAM", "RAM", "LM", "RM"].includes(p)) {
-    return "AM";
-  }
+  if (["CAM", "AM", "LAM", "RAM", "LM", "RM"].includes(p)) return "AM";
 
-  // Central / box midfield
-  if (["CM", "LCM", "RCM"].includes(p)) {
-    return "MID";
-  }
+  // Central midfield
+  if (["CM", "LCM", "RCM"].includes(p)) return "MID";
 
   // Attack
-  if (["ST", "CF", "LW", "RW", "LF", "RF"].includes(p)) {
-    return "ATT";
-  }
+  if (["ST", "CF", "LW", "RW", "LF", "RF"].includes(p)) return "ATT";
 
-  // Fallback
   return "MID";
 }
-
 
 function lineTitle(line: LineKey) {
   switch (line) {
@@ -58,6 +45,31 @@ function lineTitle(line: LineKey) {
   }
 }
 
+type Lane = "left" | "center" | "right";
+
+function laneForPosition(position: string): Lane {
+  const p = position.toUpperCase().trim();
+
+  // Left side
+  if (p.startsWith("L")) return "left"; // LB, LCB, LCM, LW, LM, etc
+  if (["LM", "LW", "LF", "LWB"].includes(p)) return "left";
+
+  // Right side
+  if (p.startsWith("R")) return "right"; // RB, RCB, RCM, RW, RM, etc
+  if (["RM", "RW", "RF", "RWB"].includes(p)) return "right";
+
+  return "center";
+}
+
+function sortByLaneThenName(a: { position: string }, b: { position: string }) {
+  const order: Record<Lane, number> = { left: 0, center: 1, right: 2 };
+  const la = laneForPosition(a.position);
+  const lb = laneForPosition(b.position);
+
+  if (order[la] !== order[lb]) return order[la] - order[lb];
+  return a.position.localeCompare(b.position);
+}
+
 export function FormationsPage() {
   const [formations, setFormations] = useState<Formation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -65,7 +77,7 @@ export function FormationsPage() {
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
-  // ✅ Slot edit state
+  // Slot edit state
   const [editingSlots, setEditingSlots] = useState(false);
   const [slotDraft, setSlotDraft] = useState<Record<number, string>>({});
   const [saving, setSaving] = useState(false);
@@ -128,7 +140,6 @@ export function FormationsPage() {
   function startEditSlots() {
     if (!selected) return;
 
-    // initialise draft from current slots
     const draft: Record<number, string> = {};
     (selected.slots ?? []).forEach((s, idx) => {
       draft[idx] = s.position;
@@ -155,7 +166,6 @@ export function FormationsPage() {
     const slots = selected.slots ?? [];
     if (slots.length === 0) return "This formation has no slots.";
 
-    // basic validation: non-empty
     for (let i = 0; i < slots.length; i++) {
       const v = (slotDraft[i] ?? "").trim();
       if (v.length === 0) return "Slot labels cannot be blank.";
@@ -181,7 +191,6 @@ export function FormationsPage() {
 
     setSaving(true);
     try {
-      // ✅ only patch slots (backend accepts patch)
       await updateFormation(selected.id, { slots: updatedSlots });
 
       setEditingSlots(false);
@@ -226,7 +235,6 @@ export function FormationsPage() {
                     key={f.id}
                     onClick={() => {
                       setSelectedId(f.id);
-                      // leaving edit mode if switching formations
                       setEditingSlots(false);
                       setSlotDraft({});
                     }}
@@ -248,7 +256,14 @@ export function FormationsPage() {
 
           {selected ? (
             <div className="card" style={{ padding: 12 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  flexWrap: "wrap",
+                }}
+              >
                 <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "baseline" }}>
                   <div>
                     <strong>{selected.name}</strong>
@@ -277,7 +292,11 @@ export function FormationsPage() {
               {/* Pitch-style layout */}
               <div style={{ marginTop: 14, display: "grid", gap: 14 }}>
                 {(["ATT", "AM", "MID", "DM", "DEF", "GK"] as LineKey[]).map((line) => {
-                  const lineSlots = grouped[line];
+                  const lineSlots = [...grouped[line]].sort(sortByLaneThenName);
+
+                  const left = lineSlots.filter((s) => laneForPosition(s.position) === "left");
+                  const center = lineSlots.filter((s) => laneForPosition(s.position) === "center");
+                  const right = lineSlots.filter((s) => laneForPosition(s.position) === "right");
 
                   return (
                     <div key={line}>
@@ -285,49 +304,154 @@ export function FormationsPage() {
 
                       <div
                         style={{
-                          display: "flex",
-                          justifyContent: "center",
+                          display: "grid",
+                          gridTemplateColumns: "1fr 1fr 1fr",
                           gap: 10,
-                          flexWrap: "wrap",
                           padding: "10px 8px",
                           border: "1px dashed rgba(0,0,0,0.15)",
                           borderRadius: 12,
+                          alignItems: "center",
                         }}
                       >
                         {lineSlots.length === 0 ? (
-                          <span style={{ opacity: 0.6, fontSize: 13 }}>No slots</span>
+                          <div
+                            style={{
+                              gridColumn: "1 / -1",
+                              textAlign: "center",
+                              opacity: 0.6,
+                              fontSize: 13,
+                            }}
+                          >
+                            No slots
+                          </div>
                         ) : (
-                          lineSlots.map((s) => (
+                          <>
+                            {/* LEFT */}
                             <div
-                              key={`${line}-${s.idx}`}
                               style={{
-                                border: "1px solid rgba(0,0,0,0.2)",
-                                borderRadius: 999,
-                                padding: "6px 14px",
-                                minWidth: 56,
-                                textAlign: "center",
-                                background: "#fff",
+                                display: "flex",
+                                gap: 10,
+                                flexWrap: "wrap",
+                                justifyContent: "flex-start",
                               }}
-                              title={`Slot #${s.idx + 1}`}
                             >
-                              {editingSlots ? (
-                                <input
-                                  value={slotDraft[s.idx] ?? ""}
-                                  onChange={(e) => setDraftForIndex(s.idx, e.target.value)}
+                              {left.map((s) => (
+                                <div
+                                  key={`${line}-L-${s.idx}`}
                                   style={{
-                                    width: 70,
                                     border: "1px solid rgba(0,0,0,0.2)",
-                                    borderRadius: 8,
-                                    padding: "4px 8px",
+                                    borderRadius: 999,
+                                    padding: "6px 14px",
+                                    minWidth: 56,
                                     textAlign: "center",
+                                    background: "#fff",
                                   }}
-                                  disabled={saving}
-                                />
-                              ) : (
-                                s.position
-                              )}
+                                  title={`Slot #${s.idx + 1}`}
+                                >
+                                  {editingSlots ? (
+                                    <input
+                                      value={slotDraft[s.idx] ?? ""}
+                                      onChange={(e) => setDraftForIndex(s.idx, e.target.value)}
+                                      style={{
+                                        width: 70,
+                                        border: "1px solid rgba(0,0,0,0.2)",
+                                        borderRadius: 8,
+                                        padding: "4px 8px",
+                                        textAlign: "center",
+                                      }}
+                                      disabled={saving}
+                                    />
+                                  ) : (
+                                    s.position
+                                  )}
+                                </div>
+                              ))}
                             </div>
-                          ))
+
+                            {/* CENTER */}
+                            <div
+                              style={{
+                                display: "flex",
+                                gap: 10,
+                                flexWrap: "wrap",
+                                justifyContent: "center",
+                              }}
+                            >
+                              {center.map((s) => (
+                                <div
+                                  key={`${line}-C-${s.idx}`}
+                                  style={{
+                                    border: "1px solid rgba(0,0,0,0.2)",
+                                    borderRadius: 999,
+                                    padding: "6px 14px",
+                                    minWidth: 56,
+                                    textAlign: "center",
+                                    background: "#fff",
+                                  }}
+                                  title={`Slot #${s.idx + 1}`}
+                                >
+                                  {editingSlots ? (
+                                    <input
+                                      value={slotDraft[s.idx] ?? ""}
+                                      onChange={(e) => setDraftForIndex(s.idx, e.target.value)}
+                                      style={{
+                                        width: 70,
+                                        border: "1px solid rgba(0,0,0,0.2)",
+                                        borderRadius: 8,
+                                        padding: "4px 8px",
+                                        textAlign: "center",
+                                      }}
+                                      disabled={saving}
+                                    />
+                                  ) : (
+                                    s.position
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+
+                            {/* RIGHT */}
+                            <div
+                              style={{
+                                display: "flex",
+                                gap: 10,
+                                flexWrap: "wrap",
+                                justifyContent: "flex-end",
+                              }}
+                            >
+                              {right.map((s) => (
+                                <div
+                                  key={`${line}-R-${s.idx}`}
+                                  style={{
+                                    border: "1px solid rgba(0,0,0,0.2)",
+                                    borderRadius: 999,
+                                    padding: "6px 14px",
+                                    minWidth: 56,
+                                    textAlign: "center",
+                                    background: "#fff",
+                                  }}
+                                  title={`Slot #${s.idx + 1}`}
+                                >
+                                  {editingSlots ? (
+                                    <input
+                                      value={slotDraft[s.idx] ?? ""}
+                                      onChange={(e) => setDraftForIndex(s.idx, e.target.value)}
+                                      style={{
+                                        width: 70,
+                                        border: "1px solid rgba(0,0,0,0.2)",
+                                        borderRadius: 8,
+                                        padding: "4px 8px",
+                                        textAlign: "center",
+                                      }}
+                                      disabled={saving}
+                                    />
+                                  ) : (
+                                    s.position
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </>
                         )}
                       </div>
                     </div>
@@ -349,6 +473,7 @@ export function FormationsPage() {
     </section>
   );
 }
+
 
 
 

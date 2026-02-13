@@ -14,8 +14,8 @@ type Props = {
 
 function buildEmptySlots(formation: Formation): LineupSlot[] {
   return (formation.slots ?? []).map((s) => ({
-    slotId: s.slotId,          // ✅ from DB
-    pos: s.position,           // label shown in UI
+    slotId: s.slotId,   // ✅ stable from DB
+    pos: s.position,    // label shown in UI
     playerId: null,
     isCaptain: false,
     rating: null,
@@ -56,7 +56,6 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
     [formations, formationId]
   );
 
-  // prevent duplicate players
   const selectedPlayerIds = useMemo(() => {
     const set = new Set<number>();
     for (const s of slots) if (s.playerId != null) set.add(s.playerId);
@@ -79,19 +78,15 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
         const sortedFormations = [...fs].sort((a, b) => a.name.localeCompare(b.name));
         setFormations(sortedFormations);
 
-        // decide starting formation
-        let initialFormationId: number | null =
+        const initialFormationId =
           existing?.formationId ?? sortedFormations[0]?.id ?? null;
 
         setFormationId(initialFormationId);
 
         if (initialFormationId != null) {
           const f = sortedFormations.find((x) => x.id === initialFormationId) ?? null;
-          if (f) {
-            setSlots(mergeSlots(f, existing?.slots));
-          } else {
-            setSlots([]);
-          }
+          if (f) setSlots(mergeSlots(f, existing?.slots));
+          else setSlots([]);
         } else {
           setSlots([]);
         }
@@ -198,7 +193,7 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
       {error ? <p className="error" style={{ marginTop: 10 }}>{error}</p> : null}
 
       <div style={{ marginTop: 12, display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
-        <label style={{ width: 280 }}>
+        <label style={{ width: 320 }}>
           Formation
           <select
             value={formationId ?? ""}
@@ -225,14 +220,16 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
       ) : (
         <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
           {selectedFormation.slots.map((slotMeta) => {
-            const slot = slots.find((s) => s.slotId === slotMeta.slotId)!;
+            const slot = slots.find((s) => s.slotId === slotMeta.slotId);
+
+            if (!slot) return null;
 
             return (
               <div
                 key={slotMeta.slotId}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "120px 1fr 140px",
+                  gridTemplateColumns: "150px 1fr 140px",
                   gap: 10,
                   alignItems: "center",
                 }}
@@ -277,7 +274,12 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
       )}
 
       <div style={{ marginTop: 14, display: "flex", gap: 10 }}>
-        <button type="button" className="primary" onClick={handleSave} disabled={saving || !selectedFormation}>
+        <button
+          type="button"
+          className="primary"
+          onClick={handleSave}
+          disabled={saving || !selectedFormation}
+        >
           {saving ? "Saving..." : "Save Lineup"}
         </button>
         <button type="button" onClick={onClose} disabled={saving}>
@@ -287,6 +289,8 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
     </div>
   );
 }
+
+
 
 
 

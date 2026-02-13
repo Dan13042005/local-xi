@@ -1,6 +1,8 @@
+// frontend/src/models/Lineup.ts
+
 export type LineupSlot = {
-  slotId: string;
-  pos: string;
+  slotId: string;              // stable id from FormationSlot.slotId
+  pos: string;                 // label shown in UI (from FormationSlot.position)
   playerId: number | null;
   isCaptain: boolean;
   rating: number | null;
@@ -9,15 +11,11 @@ export type LineupSlot = {
 export type Lineup = {
   id?: number;
   matchId: number;
-
-  // ✅ backend now expects this
-  formationId: number;
-
-  // optional for later
+  formationId: number;         // ✅ formation reference by DB id
   captainPlayerId?: number | null;
-
   slots: LineupSlot[];
 };
+
 
 
 

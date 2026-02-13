@@ -6,142 +6,165 @@ type Props = {
   onCreated?: () => void;
 };
 
-type ParsedShape =
-  | { ok: true; parts: number[] } // e.g. [4,2,3,1]
-  | { ok: false; message: string };
+type Tier = "GK" | "DEF" | "DM" | "MID" | "AM" | "ATT";
 
-function parseShape(raw: string): ParsedShape {
-  const s = raw.trim();
-  if (!s) return { ok: false, message: "Shape is required (e.g. 4-4-2)." };
+// LM/RM should be in attacking midfield (AM) as you asked.
+function tierForPosition(pos: string): Tier {
+  const p = pos.toUpperCase().trim();
 
-  // allow "4-4-2" and "4 4 2" (we'll normalize spaces to -)
-  const normalized = s.replace(/\s+/g, "-");
-  const tokens = normalized.split("-").filter(Boolean);
+  if (p === "GK") return "GK";
 
-  if (tokens.length < 2) {
-    return { ok: false, message: "Shape must have at least 2 lines (e.g. 4-4-2)." };
-  }
+  if (["LB", "RB", "CB", "LCB", "RCB", "LWB", "RWB"].includes(p)) return "DEF";
 
-  const parts: number[] = [];
-  for (const t of tokens) {
-    const n = Number(t);
-    if (!Number.isInteger(n) || n <= 0) {
-      return { ok: false, message: "Shape must be numbers like 4-4-2 (positive integers only)." };
-    }
-    parts.push(n);
-  }
+  // defensive mids
+  if (["CDM", "DM", "LDM", "RDM"].includes(p)) return "DM";
 
-  const sum = parts.reduce((a, b) => a + b, 0);
-  // We assume outfield players = 10 (GK is separate)
-  if (sum !== 10) {
-    return { ok: false, message: `Shape must add up to 10 outfield players. Yours adds to ${sum}.` };
-  }
+  // attacking mids (include LM/RM here per your request)
+  if (["CAM", "AM", "LAM", "RAM", "LM", "RM"].includes(p)) return "AM";
 
-  return { ok: true, parts };
+  // regular mids
+  if (["CM", "LCM", "RCM"].includes(p)) return "MID";
+
+  // attackers
+  if (["ST", "CF", "LW", "RW", "LF", "RF"].includes(p)) return "ATT";
+
+  // fallback
+  return "MID";
 }
 
-function buildSlotsFromShape(parts: number[]): FormationSlot[] {
-  // parts: [DEF, MID, ATT] or [DEF, MID1, MID2, ATT] etc
-  // We interpret:
-  // - first number = DEF count
-  // - last number = ATT count
-  // - everything in between = MID count (combined)
-  const defCount = parts[0];
-  const attCount = parts[parts.length - 1];
-  const midCount = parts.slice(1, -1).reduce((a, b) => a + b, 0);
+// Very simple “default labels” generator from shape.
+// You can refine these labels later, and we ALSO let managers edit them after generation.
+function buildDefaultPositionsFromShape(shape: string): string[] {
+  // shape like "4-4-2" or "3-1-4-2"
+  const parts = shape
+    .trim()
+    .split("-")
+    .map((x) => Number(x))
+    .filter((n) => Number.isInteger(n) && n >= 0);
 
-  const slots: FormationSlot[] = [];
+  if (parts.length < 2) {
+    // fallback to classic 4-4-2
+    return ["GK", "LB", "CB", "CB", "RB", "LM", "CM", "CM", "RM", "ST", "ST"];
+  }
 
-  // GK
-  slots.push({ position: "GK", playerId: null });
+  // Always 1 GK
+  const positions: string[] = ["GK"];
 
-  // DEF labels (simple, sensible defaults)
-  // 3 => LCB/CB/RCB, 4 => LB/LCB/RCB/RB, 5 => LWB/LCB/CB/RCB/RWB etc.
-  const defLabels =
-    defCount === 3
-      ? ["LCB", "CB", "RCB"]
-      : defCount === 4
-      ? ["LB", "LCB", "RCB", "RB"]
-      : defCount === 5
-      ? ["LWB", "LCB", "CB", "RCB", "RWB"]
-      : Array.from({ length: defCount }, (_, i) => `DEF${i + 1}`);
+  // Common interpretation:
+  // First number = defenders
+  // Last number = attackers
+  // Middle numbers = midfield bands from deepest to most advanced
+  const defenders = parts[0];
+  const attackers = parts[parts.length - 1];
+  const mids = parts.slice(1, parts.length - 1);
 
-  defLabels.forEach((p) => slots.push({ position: p, playerId: null }));
+  // DEF labels
+  if (defenders === 4) positions.push("LB", "CB", "CB", "RB");
+  else if (defenders === 3) positions.push("LCB", "CB", "RCB");
+  else {
+    for (let i = 0; i < defenders; i++) positions.push("CB");
+  }
 
-  // MID labels
-  // 2 => CM/CM, 3 => CM/CM/CM, 4 => LM/CM/CM/RM, 5 => LM/CM/CM/CM/RM
-  const midLabels =
-    midCount === 2
-      ? ["CM", "CM"]
-      : midCount === 3
-      ? ["CM", "CM", "CM"]
-      : midCount === 4
-      ? ["LM", "CM", "CM", "RM"]
-      : midCount === 5
-      ? ["LM", "CM", "CM", "CM", "RM"]
-      : Array.from({ length: midCount }, (_, i) => `MID${i + 1}`);
+  // MID bands: we label the first mid band as DM if it looks like a DM band (often 1 or 2),
+  // and the last mid band as AM if it looks advanced (often 3), otherwise CM.
+  // This is just defaults — manager can edit labels.
+  mids.forEach((count, idx) => {
+    const isFirst = idx === 0;
+    const isLast = idx === mids.length - 1;
 
-  midLabels.forEach((p) => slots.push({ position: p, playerId: null }));
+    const label =
+      mids.length >= 2 && isFirst ? "CDM" :
+      mids.length >= 2 && isLast ? "CAM" :
+      "CM";
+
+    for (let i = 0; i < count; i++) positions.push(label);
+  });
 
   // ATT labels
-  // 1 => ST, 2 => ST/ST, 3 => LW/ST/RW
-  const attLabels =
-    attCount === 1
-      ? ["ST"]
-      : attCount === 2
-      ? ["ST", "ST"]
-      : attCount === 3
-      ? ["LW", "ST", "RW"]
-      : Array.from({ length: attCount }, (_, i) => `ATT${i + 1}`);
+  if (attackers === 3) positions.push("LW", "ST", "RW");
+  else if (attackers === 2) positions.push("ST", "ST");
+  else if (attackers === 1) positions.push("ST");
+  else {
+    for (let i = 0; i < attackers; i++) positions.push("ST");
+  }
 
-  attLabels.forEach((p) => slots.push({ position: p, playerId: null }));
+  return positions;
+}
 
-  return slots;
+function attachStableSlotIds(positions: string[]): FormationSlot[] {
+  const counters: Record<Tier, number> = {
+    GK: 0,
+    DEF: 0,
+    DM: 0,
+    MID: 0,
+    AM: 0,
+    ATT: 0,
+  };
+
+  return positions.map((position) => {
+    const tier = tierForPosition(position);
+    counters[tier] += 1;
+
+    const slotId = `${tier}-${counters[tier]}`; // e.g. "DEF-2", "AM-1"
+
+    return {
+      position,
+      slotId,
+      playerId: null,
+    };
+  });
 }
 
 export function CreateFormationForm({ onCreated }: Props) {
-  const [name, setName] = useState<string>("");
-  const [shape, setShape] = useState<string>("4-4-2");
+  const [name, setName] = useState("");
+  const [shape, setShape] = useState("");
+  const [slots, setSlots] = useState<FormationSlot[]>([]);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string>("");
+  const [error, setError] = useState("");
 
-  const parsed = useMemo(() => parseShape(shape), [shape]);
+  const previewPositions = useMemo(() => buildDefaultPositionsFromShape(shape), [shape]);
 
-  const previewSlots = useMemo(() => {
-    if (!parsed.ok) return [];
-    return buildSlotsFromShape(parsed.parts);
-  }, [parsed]);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  function generateFromShape() {
     setError("");
+    const built = attachStableSlotIds(previewPositions);
+    setSlots(built);
+  }
 
-    const trimmedName = name.trim();
-    if (!trimmedName) {
-      setError("Formation name is required.");
+  function updateSlotLabel(index: number, next: string) {
+    setSlots((prev) =>
+      prev.map((s, i) => (i === index ? { ...s, position: next } : s))
+    );
+  }
+
+  const canCreate =
+    name.trim().length > 0 &&
+    shape.trim().length > 0 &&
+    slots.length > 0 &&
+    slots.every((s) => s.slotId.trim().length > 0);
+
+  async function handleCreate() {
+    setError("");
+    if (!canCreate) {
+      setError("Enter name + shape, click Generate, then Create.");
       return;
     }
 
-    const p = parseShape(shape);
-    if (!p.ok) {
-      setError(p.message);
-      return;
-    }
-
-    const slots = buildSlotsFromShape(p.parts);
+    const payload: Omit<Formation, "id"> = {
+      name: name.trim(),
+      shape: shape.trim(),
+      slots: slots.map((s) => ({
+        position: s.position.trim(),
+        slotId: s.slotId.trim(),
+        playerId: null,
+      })),
+    };
 
     setSaving(true);
     try {
-      const payload: Omit<Formation, "id"> = {
-        name: trimmedName,
-        shape: shape.trim().replace(/\s+/g, "-"),
-        slots,
-      };
-
       await createFormation(payload);
-
       setName("");
-      setShape("4-4-2");
+      setShape("");
+      setSlots([]);
       onCreated?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create formation.");
@@ -151,52 +174,64 @@ export function CreateFormationForm({ onCreated }: Props) {
   }
 
   return (
-    <form className="card" style={{ padding: 12, marginTop: 12 }} onSubmit={handleSubmit}>
+    <div className="card" style={{ padding: 12, marginTop: 12 }}>
       <strong>Create formation</strong>
 
-      <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 12, alignItems: "end" }}>
-        <label style={{ flex: "1 1 260px" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 10 }}>
+        <label>
           Name
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Cup Final XI"
-            disabled={saving}
-          />
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Cup shape" />
         </label>
 
-        <label style={{ width: 180 }}>
+        <label>
           Shape
-          <input
-            value={shape}
-            onChange={(e) => setShape(e.target.value)}
-            placeholder="e.g. 4-4-2"
-            disabled={saving}
-          />
+          <input value={shape} onChange={(e) => setShape(e.target.value)} placeholder="e.g. 3-1-4-2" />
         </label>
+      </div>
 
-        <button type="submit" className="primary" disabled={saving || !parsed.ok}>
-          {saving ? "Saving..." : "Create"}
+      <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
+        <button type="button" onClick={generateFromShape} disabled={saving || shape.trim().length === 0}>
+          Generate slots
+        </button>
+
+        <button type="button" className="primary" onClick={handleCreate} disabled={saving || !canCreate}>
+          {saving ? "Creating..." : "Create"}
         </button>
       </div>
 
-      {!parsed.ok ? (
-        <p className="error" style={{ marginTop: 10 }}>
-          {parsed.message}
-        </p>
-      ) : (
-        <div style={{ marginTop: 10, opacity: 0.85, fontSize: 13 }}>
-          Preview slots: {previewSlots.map((s) => s.position).join(", ")}
+      <div style={{ marginTop: 12, opacity: 0.85 }}>
+        <div style={{ fontSize: 13 }}>
+          Preview positions: {previewPositions.join(", ")}
         </div>
-      )}
 
-      {error ? (
-        <p className="error" style={{ marginTop: 10 }}>
-          {error}
-        </p>
-      ) : null}
-    </form>
+        {slots.length > 0 ? (
+          <div style={{ marginTop: 10 }}>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>Edit slot labels (slotId stays stable)</div>
+
+            <div style={{ display: "grid", gap: 8 }}>
+              {slots.map((s, idx) => (
+                <div
+                  key={s.slotId}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "110px 1fr",
+                    gap: 10,
+                    alignItems: "center",
+                  }}
+                >
+                  <div style={{ fontFamily: "monospace", opacity: 0.8 }}>{s.slotId}</div>
+                  <input value={s.position} onChange={(e) => updateSlotLabel(idx, e.target.value)} />
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      {error ? <p className="error" style={{ marginTop: 10 }}>{error}</p> : null}
+    </div>
   );
 }
+
 
 
