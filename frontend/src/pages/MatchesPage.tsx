@@ -3,6 +3,7 @@ import type { Match } from "../models/Match";
 import { createMatch, deleteMatches, getMatches, updateMatch } from "../api/matchesAPI";
 import { LineupEditor } from "../components/LineupEditor";
 
+// ✅ NEW: formations + lineup summaries
 import type { Formation } from "../models/Formation";
 import { getFormations } from "../api/formationsAPI";
 import { getLineupSummaries } from "../api/lineupsAPI";
@@ -26,7 +27,7 @@ type EditDraft = {
   date: string;
   opponent: string;
   home: boolean;
-  goalsFor: string;
+  goalsFor: string; // string for typing/editing
   goalsAgainst: string;
 };
 
@@ -58,15 +59,28 @@ export function MatchesPage() {
   const [query, setQuery] = useState<string>("");
   const [venueFilter, setVenueFilter] = useState<VenueFilter>("all");
 
-  // ✅ formations + lineup summaries
+  // ✅ NEW: formations + lineup summaries (matchId -> formationId)
   const [formations, setFormations] = useState<Formation[]>([]);
   const [lineupByMatchId, setLineupByMatchId] = useState<Record<number, number>>({});
 
   function formationLabel(matchId: number): string {
     const formationId = lineupByMatchId[matchId];
     if (!formationId) return "—";
+
     const f = formations.find((x) => x.id === formationId);
     return f ? `${f.name} (${f.shape})` : `Saved (#${formationId})`;
+  }
+
+  async function loadFormationsOnce() {
+    if (formations.length > 0) return;
+
+    try {
+      const fs = await getFormations();
+      const sorted = [...fs].sort((a, b) => a.name.localeCompare(b.name));
+      setFormations(sorted);
+    } catch {
+      // ok: we can still show Saved (#id)
+    }
   }
 
   async function refreshMatches() {
@@ -82,29 +96,6 @@ export function MatchesPage() {
 
       setMatches(sorted);
 
-      // ✅ load formations once (for pretty labels)
-      if (formations.length === 0) {
-        try {
-          const fs = await getFormations();
-          const fSorted = [...fs].sort((a, b) => a.name.localeCompare(b.name));
-          setFormations(fSorted);
-        } catch {
-          // ok: fallback labels will show Saved (#id)
-        }
-      }
-
-      // ✅ load lineup summaries (matchId -> formationId)
-      try {
-        const ids = sorted.map((m) => m.id);
-        const summaries = await getLineupSummaries(ids);
-
-        const map: Record<number, number> = {};
-        for (const s of summaries) map[s.matchId] = s.formationId;
-        setLineupByMatchId(map);
-      } catch {
-        setLineupByMatchId({});
-      }
-
       // Keep selection valid
       const valid = new Set(sorted.map((m) => m.id));
       setSelectedIds((prev) => prev.filter((id) => valid.has(id)));
@@ -119,6 +110,22 @@ export function MatchesPage() {
       if (lineupMatchId != null && !valid.has(lineupMatchId)) {
         setLineupMatchId(null);
       }
+
+      // ✅ NEW: load lineup summaries for these matches (matchId -> formationId)
+      const ids = sorted.map((m) => m.id);
+      if (ids.length === 0) {
+        setLineupByMatchId({});
+      } else {
+        try {
+          const sums = await getLineupSummaries(ids);
+          const map: Record<number, number> = {};
+          for (const s of sums) map[s.matchId] = s.formationId;
+          setLineupByMatchId(map);
+        } catch {
+          // ok: formation column will show —
+          setLineupByMatchId({});
+        }
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load matches.");
     }
@@ -127,6 +134,7 @@ export function MatchesPage() {
   useEffect(() => {
     (async () => {
       try {
+        await loadFormationsOnce();
         await refreshMatches();
       } finally {
         setLoading(false);
@@ -139,6 +147,7 @@ export function MatchesPage() {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }
 
+  // Select-all that works per table (visible rows)
   function isAllSelectedFor(rows: Match[]) {
     if (rows.length === 0) return false;
     const ids = rows.map((m) => m.id);
@@ -148,7 +157,10 @@ export function MatchesPage() {
   function toggleSelectAllFor(rows: Match[], checked: boolean) {
     const ids = rows.map((m) => m.id);
     setSelectedIds((prev) => {
-      if (checked) return Array.from(new Set([...prev, ...ids]));
+      if (checked) {
+        const merged = new Set([...prev, ...ids]);
+        return Array.from(merged);
+      }
       return prev.filter((id) => !ids.includes(id));
     });
   }
@@ -178,17 +190,19 @@ export function MatchesPage() {
   async function handleAddMatch(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+
     if (!canSubmit) return;
 
     try {
       await createMatch({
-        date,
+        date, // yyyy-mm-dd
         opponent: trimmedOpponent,
         home,
         goalsFor: goalsForParsed.value,
         goalsAgainst: goalsAgainstParsed.value,
       });
 
+      // reset form
       setDate("");
       setOpponent("");
       setHome(true);
@@ -224,8 +238,10 @@ export function MatchesPage() {
     return `${m.goalsFor}–${m.goalsAgainst}`;
   }
 
+  // ---------- stats helpers ----------
   function computeStats(list: Match[]) {
     const played = list.length;
+
     let wins = 0;
     let draws = 0;
     let losses = 0;
@@ -246,6 +262,7 @@ export function MatchesPage() {
 
     const gd = gf - ga;
     const points = wins * 3 + draws;
+
     return { played, wins, draws, losses, gf, ga, gd, points };
   }
 
@@ -259,7 +276,9 @@ export function MatchesPage() {
   function venueLabel(m: Match) {
     return m.home ? "H" : "A";
   }
+  // -----------------------------
 
+  // filter first
   const filteredMatches = useMemo(() => {
     const q = query.trim().toLowerCase();
 
@@ -272,6 +291,7 @@ export function MatchesPage() {
       const score =
         m.goalsFor != null && m.goalsAgainst != null ? `${m.goalsFor}-${m.goalsAgainst}` : "";
       const haystack = `${m.opponent} ${m.date} ${score}`.toLowerCase();
+
       return haystack.includes(q);
     });
   }, [matches, query, venueFilter]);
@@ -279,18 +299,19 @@ export function MatchesPage() {
   const fixtures = useMemo(() => {
     return filteredMatches
       .filter((m) => m.goalsFor == null || m.goalsAgainst == null)
-      .sort((a, b) => a.date.localeCompare(b.date));
+      .sort((a, b) => a.date.localeCompare(b.date)); // soonest first
   }, [filteredMatches]);
 
   const results = useMemo(() => {
     return filteredMatches
       .filter((m) => m.goalsFor != null && m.goalsAgainst != null)
-      .sort((a, b) => b.date.localeCompare(a.date));
+      .sort((a, b) => b.date.localeCompare(a.date)); // newest first
   }, [filteredMatches]);
 
   const seasonStats = useMemo(() => computeStats(results), [results]);
   const recentForm = useMemo(() => results.slice(0, 5), [results]);
 
+  // ---------- inline edit helpers ----------
   function startEdit(m: Match) {
     setError("");
     setEditingId(m.id);
@@ -356,12 +377,14 @@ export function MatchesPage() {
       setSaving(false);
     }
   }
+  // ---------------------------------------
 
   function clearFilters() {
     setQuery("");
     setVenueFilter("all");
   }
 
+  // ✅ Lineup helpers
   function openLineup(matchId: number) {
     setError("");
     cancelEdit();
@@ -392,7 +415,10 @@ export function MatchesPage() {
             <th>Opponent</th>
             <th>H/A</th>
             <th>Result</th>
+
+            {/* ✅ NEW */}
             <th>Formation</th>
+
             <th style={{ width: 140 }}>Lineup</th>
             <th style={{ width: 180 }}>Edit</th>
           </tr>
@@ -493,6 +519,7 @@ export function MatchesPage() {
                   )}
                 </td>
 
+                {/* ✅ NEW */}
                 <td>{formationLabel(m.id)}</td>
 
                 <td>
@@ -605,6 +632,7 @@ export function MatchesPage() {
         {error ? <p className="error">{error}</p> : null}
       </form>
 
+      {/* Search + Venue filter */}
       <div className="card" style={{ marginTop: 12, padding: "12px 14px" }}>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "end" }}>
           <label style={{ flex: "1 1 280px" }}>
@@ -635,36 +663,21 @@ export function MatchesPage() {
         </div>
       </div>
 
+      {/* Season Summary + Recent Form (filtered) */}
       <h3 style={{ marginTop: "1rem" }}>Season Summary</h3>
       {results.length === 0 ? (
         <p>No results yet — add scores to fixtures to generate stats.</p>
       ) : (
         <div className="card" style={{ padding: "12px 14px", marginTop: 8 }}>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 14 }}>
-            <div>
-              <strong>Played:</strong> {seasonStats.played}
-            </div>
-            <div>
-              <strong>W:</strong> {seasonStats.wins}
-            </div>
-            <div>
-              <strong>D:</strong> {seasonStats.draws}
-            </div>
-            <div>
-              <strong>L:</strong> {seasonStats.losses}
-            </div>
-            <div>
-              <strong>GF:</strong> {seasonStats.gf}
-            </div>
-            <div>
-              <strong>GA:</strong> {seasonStats.ga}
-            </div>
-            <div>
-              <strong>GD:</strong> {seasonStats.gd}
-            </div>
-            <div>
-              <strong>Points:</strong> {seasonStats.points}
-            </div>
+            <div><strong>Played:</strong> {seasonStats.played}</div>
+            <div><strong>W:</strong> {seasonStats.wins}</div>
+            <div><strong>D:</strong> {seasonStats.draws}</div>
+            <div><strong>L:</strong> {seasonStats.losses}</div>
+            <div><strong>GF:</strong> {seasonStats.gf}</div>
+            <div><strong>GA:</strong> {seasonStats.ga}</div>
+            <div><strong>GD:</strong> {seasonStats.gd}</div>
+            <div><strong>Points:</strong> {seasonStats.points}</div>
           </div>
 
           <div style={{ marginTop: 10 }}>
@@ -689,6 +702,7 @@ export function MatchesPage() {
         </div>
       )}
 
+      {/* ✅ Lineup editor renders here */}
       {lineupMatchId != null ? (
         <LineupEditor matchId={lineupMatchId} onClose={closeLineup} onSaved={refreshMatches} />
       ) : null}
@@ -701,6 +715,7 @@ export function MatchesPage() {
     </section>
   );
 }
+
 
 
 

@@ -5,6 +5,7 @@ import type { Lineup, LineupSlot } from "../models/Lineup";
 import { getPlayers } from "../api/playersAPI";
 import { getFormations } from "../api/formationsAPI";
 import { getLineupForMatch, saveLineupForMatch } from "../api/lineupsAPI";
+import { LineupPitchPreview } from "./LineupPitchPreview";
 
 type Props = {
   matchId: number;
@@ -14,8 +15,8 @@ type Props = {
 
 function buildEmptySlots(formation: Formation): LineupSlot[] {
   return (formation.slots ?? []).map((s) => ({
-    slotId: s.slotId,   // ✅ stable from DB
-    pos: s.position,    // label shown in UI
+    slotId: s.slotId, // ✅ stable from DB
+    pos: s.position, // label shown in UI
     playerId: null,
     isCaptain: false,
     rating: null,
@@ -56,6 +57,7 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
     [formations, formationId]
   );
 
+  // prevent duplicate players
   const selectedPlayerIds = useMemo(() => {
     const set = new Set<number>();
     for (const s of slots) if (s.playerId != null) set.add(s.playerId);
@@ -75,12 +77,11 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
         ]);
 
         setPlayers([...ps].sort((a, b) => a.number - b.number));
+
         const sortedFormations = [...fs].sort((a, b) => a.name.localeCompare(b.name));
         setFormations(sortedFormations);
 
-        const initialFormationId =
-          existing?.formationId ?? sortedFormations[0]?.id ?? null;
-
+        const initialFormationId = existing?.formationId ?? sortedFormations[0]?.id ?? null;
         setFormationId(initialFormationId);
 
         if (initialFormationId != null) {
@@ -111,8 +112,16 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
     );
   }
 
-  function changeFormation(nextId: number) {
+  function changeFormation(nextIdRaw: string) {
     setError("");
+
+    if (nextIdRaw.trim() === "") {
+      setFormationId(null);
+      setSlots([]);
+      return;
+    }
+
+    const nextId = Number(nextIdRaw);
     setFormationId(nextId);
 
     const f = formations.find((x) => x.id === nextId);
@@ -120,6 +129,7 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
       setSlots([]);
       return;
     }
+
     setSlots((prev) => mergeSlots(f, prev));
   }
 
@@ -190,14 +200,18 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
         </button>
       </div>
 
-      {error ? <p className="error" style={{ marginTop: 10 }}>{error}</p> : null}
+      {error ? (
+        <p className="error" style={{ marginTop: 10 }}>
+          {error}
+        </p>
+      ) : null}
 
       <div style={{ marginTop: 12, display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
         <label style={{ width: 320 }}>
           Formation
           <select
             value={formationId ?? ""}
-            onChange={(e) => changeFormation(Number(e.target.value))}
+            onChange={(e) => changeFormation(e.target.value)}
             disabled={saving || formations.length === 0}
           >
             {formations.length === 0 ? (
@@ -214,63 +228,69 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
       </div>
 
       {!selectedFormation ? (
-        <p style={{ marginTop: 12, opacity: 0.8 }}>
-          Create a formation first in the Formations page.
-        </p>
+        <p style={{ marginTop: 12, opacity: 0.8 }}>Create a formation first in the Formations page.</p>
       ) : (
-        <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-          {selectedFormation.slots.map((slotMeta) => {
-            const slot = slots.find((s) => s.slotId === slotMeta.slotId);
+        <>
+          {/* ✅ assignment grid */}
+          <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+            {selectedFormation.slots.map((slotMeta) => {
+              const slot = slots.find((s) => s.slotId === slotMeta.slotId);
+              if (!slot) return null;
 
-            if (!slot) return null;
-
-            return (
-              <div
-                key={slotMeta.slotId}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "150px 1fr 140px",
-                  gap: 10,
-                  alignItems: "center",
-                }}
-              >
-                <div style={{ fontWeight: 700 }}>
-                  {slotMeta.position}{" "}
-                  <span style={{ opacity: 0.6, fontWeight: 400 }}>({slotMeta.slotId})</span>
-                </div>
-
-                <select
-                  value={slot.playerId ?? ""}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setPlayer(slotMeta.slotId, v === "" ? null : Number(v));
+              return (
+                <div
+                  key={slotMeta.slotId}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "150px 1fr 140px",
+                    gap: 10,
+                    alignItems: "center",
                   }}
-                  disabled={saving}
                 >
-                  <option value="">— Unassigned —</option>
-                  {players.map((p) => {
-                    const takenByOtherSlot = p.id !== slot.playerId && selectedPlayerIds.has(p.id);
-                    return (
-                      <option key={p.id} value={p.id} disabled={takenByOtherSlot}>
-                        #{p.number} {p.name} ({p.positions.join(", ")})
-                      </option>
-                    );
-                  })}
-                </select>
+                  <div style={{ fontWeight: 700 }}>
+                    {slotMeta.position}{" "}
+                    <span style={{ opacity: 0.6, fontWeight: 400 }}>({slotMeta.slotId})</span>
+                  </div>
 
-                <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <input
-                    type="checkbox"
-                    checked={slot.isCaptain}
-                    onChange={() => setCaptain(slotMeta.slotId)}
+                  <select
+                    value={slot.playerId ?? ""}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setPlayer(slotMeta.slotId, v === "" ? null : Number(v));
+                    }}
                     disabled={saving}
-                  />
-                  Captain
-                </label>
-              </div>
-            );
-          })}
-        </div>
+                  >
+                    <option value="">— Unassigned —</option>
+                    {players.map((p) => {
+                      const takenByOtherSlot = p.id !== slot.playerId && selectedPlayerIds.has(p.id);
+                      return (
+                        <option key={p.id} value={p.id} disabled={takenByOtherSlot}>
+                          #{p.number} {p.name} ({p.positions.join(", ")})
+                        </option>
+                      );
+                    })}
+                  </select>
+
+                  <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={slot.isCaptain}
+                      onChange={() => setCaptain(slotMeta.slotId)}
+                      disabled={saving}
+                    />
+                    Captain
+                  </label>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* ✅ pitch preview */}
+          <div style={{ marginTop: 16 }}>
+            <h4 style={{ margin: "8px 0" }}>Preview</h4>
+            <LineupPitchPreview formation={selectedFormation} slots={slots} players={players} />
+          </div>
+        </>
       )}
 
       <div style={{ marginTop: 14, display: "flex", gap: 10 }}>
@@ -282,6 +302,7 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
         >
           {saving ? "Saving..." : "Save Lineup"}
         </button>
+
         <button type="button" onClick={onClose} disabled={saving}>
           Cancel
         </button>
@@ -289,6 +310,7 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
     </div>
   );
 }
+
 
 
 

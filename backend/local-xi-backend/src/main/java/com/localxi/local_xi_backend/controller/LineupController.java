@@ -5,14 +5,14 @@ import com.localxi.local_xi_backend.model.LineupSlot;
 import com.localxi.local_xi_backend.repository.LineupRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import java.util.List;
-import java.util.stream.Collectors;
 
+import java.util.*;
+import java.util.stream.Collectors;
 
 @CrossOrigin(
         origins = "http://localhost:5173",
         allowedHeaders = "*",
-        methods = {RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.DELETE, RequestMethod.OPTIONS}
+        methods = {RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.DELETE}
 )
 @RestController
 @RequestMapping("/api/lineups")
@@ -24,15 +24,15 @@ public class LineupController {
         this.repo = repo;
     }
 
-    // Get lineup for a match (returns 404 if none saved yet)
+    // GET /api/lineups/match/{matchId}
     @GetMapping("/match/{matchId}")
-    public ResponseEntity<?> getForMatch(@PathVariable Long matchId) {
+    public ResponseEntity<?> getLineupForMatch(@PathVariable Long matchId) {
         return repo.findByMatchId(matchId)
-                .map(ResponseEntity::ok)
-                .orElseGet(() -> ResponseEntity.notFound().build());
+                .<ResponseEntity<?>>map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.status(404).body("No lineup for match " + matchId));
     }
 
-    // Create/update lineup for a match
+    // PUT /api/lineups/match/{matchId}
     @PutMapping("/match/{matchId}")
     public ResponseEntity<?> upsertForMatch(@PathVariable Long matchId, @RequestBody Lineup payload) {
 
@@ -63,9 +63,9 @@ public class LineupController {
             slot.setLineup(lineup);
             slot.setSlotId(s.getSlotId());
             slot.setPos(s.getPos());
-            slot.setPlayerId(s.getPlayerId());   // nullable ok
+            slot.setPlayerId(s.getPlayerId());
             slot.setCaptain(s.isCaptain());
-            slot.setRating(s.getRating());       // nullable ok
+            slot.setRating(s.getRating());
 
             lineup.getSlots().add(slot);
         }
@@ -73,23 +73,24 @@ public class LineupController {
         return ResponseEntity.ok(repo.save(lineup));
     }
 
-    // ✅ NEW: lineup summaries for a list of match IDs
-    // POST /api/lineups/summaries  body: { "ids": [1,2,3] }
+    // POST /api/lineups/summaries   { "ids": [1,2,3] }
+    // returns: [{ "matchId": 1, "formationId": 5 }, ...]
     @PostMapping("/summaries")
     public ResponseEntity<?> getSummaries(@RequestBody IdsRequest request) {
-        if (request == null || request.ids == null || request.ids.isEmpty()) {
-            return ResponseEntity.badRequest().body("No ids provided");
+        if (request == null || request.ids == null) {
+            return ResponseEntity.badRequest().body("ids are required");
+        }
+        if (request.ids.isEmpty()) {
+            return ResponseEntity.ok(Collections.emptyList());
         }
 
-        List<Long> ids = request.ids;
+        List<Lineup> lineups = repo.findAllByMatchIdIn(request.ids);
 
-        List<Lineup> lineups = repo.findByMatchIdIn(ids);
-
-        List<LineupSummary> summaries = lineups.stream()
+        List<LineupSummary> out = lineups.stream()
                 .map(l -> new LineupSummary(l.getMatchId(), l.getFormationId()))
                 .collect(Collectors.toList());
 
-        return ResponseEntity.ok(summaries);
+        return ResponseEntity.ok(out);
     }
 
     public static class IdsRequest {
@@ -105,34 +106,8 @@ public class LineupController {
             this.formationId = formationId;
         }
     }
-    // ✅ NEW: summaries for matches (used by Matches table)
-@PostMapping("/summaries")
-public ResponseEntity<?> getLineupSummaries(@RequestBody LineupSummariesRequest req) {
-    if (req == null || req.getMatchIds() == null) {
-        return ResponseEntity.badRequest().body("matchIds is required");
-    }
-
-    List<Long> ids = req.getMatchIds()
-            .stream()
-            .filter(x -> x != null)
-            .distinct()
-            .collect(Collectors.toList());
-
-    if (ids.isEmpty()) {
-        return ResponseEntity.ok(List.of());
-    }
-
-    var lineups = repo.findByMatchIdIn(ids);
-
-    var result = lineups.stream()
-            .map(l -> new LineupSummaryDto(l.getMatchId(), l.getFormationId()))
-            .collect(Collectors.toList());
-
-    return ResponseEntity.ok(result);
 }
 
-
-}
 
 
 

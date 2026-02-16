@@ -7,11 +7,13 @@ import java.util.List;
 import java.util.Optional;
 
 public interface LineupRepository extends JpaRepository<Lineup, Long> {
+
     Optional<Lineup> findByMatchId(Long matchId);
 
-    // ✅ NEW
-    List<Lineup> findByMatchIdIn(List<Long> matchIds);
+    // ✅ used for "summaries" endpoint
+    List<Lineup> findAllByMatchIdIn(List<Long> matchIds);
 }
+
 
 
 
