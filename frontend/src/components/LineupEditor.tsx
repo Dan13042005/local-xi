@@ -6,6 +6,7 @@ import { getPlayers } from "../api/playersAPI";
 import { getFormations } from "../api/formationsAPI";
 import { getLineupForMatch, saveLineupForMatch } from "../api/lineupsAPI";
 import { LineupPitchPreview } from "./LineupPitchPreview";
+import { LineupStatsDashboard } from "./LineupStatsDashboard";
 
 type Props = {
   matchId: number;
@@ -15,8 +16,8 @@ type Props = {
 
 function buildEmptySlots(formation: Formation): LineupSlot[] {
   return (formation.slots ?? []).map((s) => ({
-    slotId: s.slotId, // ✅ stable from DB
-    pos: s.position, // label shown in UI
+    slotId: s.slotId,
+    pos: s.position,
     playerId: null,
     isCaptain: false,
     rating: null,
@@ -41,6 +42,21 @@ function mergeSlots(formation: Formation, existing: LineupSlot[] | undefined): L
   });
 }
 
+// ✅ Allows decimals; clamps to 0.0–10.0; preserves up to 1 dp (change if you want)
+function parseRating(raw: string): number | null {
+  const t = raw.trim();
+  if (t === "") return null;
+
+  // accept comma decimal too (e.g. "7,5")
+  const normalized = t.replace(",", ".");
+  const n = Number(normalized);
+  if (Number.isNaN(n)) return null;
+
+  const clamped = Math.min(10, Math.max(0, n));
+  // keep 1 decimal place (remove rounding if you want full precision)
+  return Math.round(clamped * 10) / 10;
+}
+
 export function LineupEditor({ matchId, onClose, onSaved }: Props) {
   const [players, setPlayers] = useState<Player[]>([]);
   const [formations, setFormations] = useState<Formation[]>([]);
@@ -57,7 +73,6 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
     [formations, formationId]
   );
 
-  // prevent duplicate players
   const selectedPlayerIds = useMemo(() => {
     const set = new Set<number>();
     for (const s of slots) if (s.playerId != null) set.add(s.playerId);
@@ -86,8 +101,7 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
 
         if (initialFormationId != null) {
           const f = sortedFormations.find((x) => x.id === initialFormationId) ?? null;
-          if (f) setSlots(mergeSlots(f, existing?.slots));
-          else setSlots([]);
+          setSlots(f ? mergeSlots(f, existing?.slots) : []);
         } else {
           setSlots([]);
         }
@@ -112,16 +126,13 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
     );
   }
 
-  function changeFormation(nextIdRaw: string) {
+  function setRating(slotId: string, raw: string) {
+    const rating = parseRating(raw);
+    setSlots((prev) => prev.map((s) => (s.slotId === slotId ? { ...s, rating } : s)));
+  }
+
+  function changeFormation(nextId: number) {
     setError("");
-
-    if (nextIdRaw.trim() === "") {
-      setFormationId(null);
-      setSlots([]);
-      return;
-    }
-
-    const nextId = Number(nextIdRaw);
     setFormationId(nextId);
 
     const f = formations.find((x) => x.id === nextId);
@@ -129,7 +140,6 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
       setSlots([]);
       return;
     }
-
     setSlots((prev) => mergeSlots(f, prev));
   }
 
@@ -144,6 +154,11 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
       if (s.playerId == null) continue;
       if (seen.has(s.playerId)) return "A player can only be assigned once in the lineup.";
       seen.add(s.playerId);
+    }
+
+    for (const s of slots) {
+      if (s.rating == null) continue;
+      if (s.rating < 0 || s.rating > 10) return "Ratings must be between 0 and 10.";
     }
 
     return "";
@@ -191,7 +206,7 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
         <div>
           <strong>Lineup for match #{matchId}</strong>
           <div style={{ opacity: 0.8, fontSize: 13, marginTop: 4 }}>
-            Select a saved formation, assign players + captain.
+            Select a saved formation, assign players + captain + ratings.
           </div>
         </div>
 
@@ -211,7 +226,7 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
           Formation
           <select
             value={formationId ?? ""}
-            onChange={(e) => changeFormation(e.target.value)}
+            onChange={(e) => changeFormation(Number(e.target.value))}
             disabled={saving || formations.length === 0}
           >
             {formations.length === 0 ? (
@@ -231,7 +246,11 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
         <p style={{ marginTop: 12, opacity: 0.8 }}>Create a formation first in the Formations page.</p>
       ) : (
         <>
-          {/* ✅ assignment grid */}
+          <div style={{ marginTop: 12 }}>
+            <LineupPitchPreview formation={selectedFormation} slots={slots} players={players} />
+            <LineupStatsDashboard formation={selectedFormation} slots={slots} players={players} />
+          </div>
+
           <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
             {selectedFormation.slots.map((slotMeta) => {
               const slot = slots.find((s) => s.slotId === slotMeta.slotId);
@@ -242,7 +261,7 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
                   key={slotMeta.slotId}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "150px 1fr 140px",
+                    gridTemplateColumns: "150px 1fr 90px 120px",
                     gap: 10,
                     alignItems: "center",
                   }}
@@ -265,11 +284,26 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
                       const takenByOtherSlot = p.id !== slot.playerId && selectedPlayerIds.has(p.id);
                       return (
                         <option key={p.id} value={p.id} disabled={takenByOtherSlot}>
-                          #{p.number} {p.name} ({p.positions.join(", ")})
+                          #{p.number} {p.name}
                         </option>
                       );
                     })}
                   </select>
+
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="0–10"
+                    value={slot.rating ?? ""}
+                    onChange={(e) => setRating(slotMeta.slotId, e.target.value)}
+                    disabled={saving}
+                    style={{
+                      width: "100%",
+                      borderRadius: 8,
+                      border: "1px solid rgba(0,0,0,0.2)",
+                      padding: "6px 8px",
+                    }}
+                  />
 
                   <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <input
@@ -284,12 +318,6 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
               );
             })}
           </div>
-
-          {/* ✅ pitch preview */}
-          <div style={{ marginTop: 16 }}>
-            <h4 style={{ margin: "8px 0" }}>Preview</h4>
-            <LineupPitchPreview formation={selectedFormation} slots={slots} players={players} />
-          </div>
         </>
       )}
 
@@ -302,7 +330,6 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
         >
           {saving ? "Saving..." : "Save Lineup"}
         </button>
-
         <button type="button" onClick={onClose} disabled={saving}>
           Cancel
         </button>
@@ -310,6 +337,10 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
     </div>
   );
 }
+
+
+
+
 
 
 

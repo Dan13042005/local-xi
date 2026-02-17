@@ -23,13 +23,13 @@ public class LineupSlot {
     @Column(name = "player_id")
     private Long playerId;
 
-    // future feature
+    // captain flag
     @Column(name = "is_captain", nullable = false)
     private boolean isCaptain = false;
 
-    // rating out of 10 (nullable)
+    // rating out of 10 (nullable, supports decimals)
     @Column
-    private Integer rating;
+    private Double rating;
 
     @JsonBackReference
     @ManyToOne(optional = false, fetch = FetchType.LAZY)
@@ -52,11 +52,13 @@ public class LineupSlot {
     public boolean isCaptain() { return isCaptain; }
     public void setCaptain(boolean captain) { isCaptain = captain; }
 
-    public Integer getRating() { return rating; }
-    public void setRating(Integer rating) { this.rating = rating; }
+    // ✅ FIXED — now Double
+    public Double getRating() { return rating; }
+    public void setRating(Double rating) { this.rating = rating; }
 
     public Lineup getLineup() { return lineup; }
     public void setLineup(Lineup lineup) { this.lineup = lineup; }
 }
+
 
 

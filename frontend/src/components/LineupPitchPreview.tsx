@@ -6,23 +6,20 @@ type LineKey = "ATT" | "AM" | "MID" | "DM" | "DEF" | "GK";
 type Lane = "L" | "C" | "R";
 
 function normalizePos(pos: string) {
-  return pos.toUpperCase().trim();
+  return (pos ?? "").toUpperCase().trim();
 }
 
 function guessLine(posRaw: string): LineKey {
   const p = normalizePos(posRaw);
 
   if (p === "GK") return "GK";
-
   if (["LB", "LWB", "LCB", "CB", "RCB", "RB", "RWB"].includes(p)) return "DEF";
-
   if (["CDM", "DM", "LDM", "RDM"].includes(p)) return "DM";
 
-  // ✅ LM/RM treated as AM (your requirement)
+  // LM/RM treated as AM
   if (["CAM", "AM", "LAM", "RAM", "LM", "RM"].includes(p)) return "AM";
 
   if (["CM", "LCM", "RCM"].includes(p)) return "MID";
-
   if (["ST", "CF", "LW", "RW", "LF", "RF"].includes(p)) return "ATT";
 
   return "MID";
@@ -31,38 +28,13 @@ function guessLine(posRaw: string): LineKey {
 function guessLane(posRaw: string): Lane {
   const p = normalizePos(posRaw);
 
-  // Left lane
-  if (
-    p.startsWith("L") ||
-    ["LB", "LWB", "LCB", "LM", "LDM", "LAM", "LW", "LF"].includes(p)
-  )
+  if (["LM", "LW", "LB", "LWB", "LCB", "LDM", "LAM", "LF"].includes(p) || p.startsWith("L"))
     return "L";
 
-  // Right lane
-  if (
-    p.startsWith("R") ||
-    ["RB", "RWB", "RCB", "RM", "RDM", "RAM", "RW", "RF"].includes(p)
-  )
+  if (["RM", "RW", "RB", "RWB", "RCB", "RDM", "RAM", "RF"].includes(p) || p.startsWith("R"))
     return "R";
 
   return "C";
-}
-
-function lineTitle(line: LineKey) {
-  switch (line) {
-    case "ATT":
-      return "Attack";
-    case "AM":
-      return "Attacking Midfield";
-    case "MID":
-      return "Midfield";
-    case "DM":
-      return "Defensive Midfield";
-    case "DEF":
-      return "Defence";
-    case "GK":
-      return "Goalkeeper";
-  }
 }
 
 type Props = {
@@ -71,10 +43,38 @@ type Props = {
   players: Player[];
 };
 
+type PositionedSlot = {
+  slot: LineupSlot;
+  xPct: number;
+  yPct: number;
+  label: string;
+  posLabel: string;
+};
+
 export function LineupPitchPreview({ formation, slots, players }: Props) {
   const playerById = new Map(players.map((p) => [p.id, p]));
 
-  // group by line -> lane
+  // 🔥 POTM = highest rating among assigned players
+  const potmSlotId = (() => {
+    const rated = slots
+      .filter((s) => s.playerId != null && s.rating != null)
+      .slice()
+      .sort((a, b) => {
+        // rating desc
+        const r = (b.rating ?? -999) - (a.rating ?? -999);
+        if (r !== 0) return r;
+
+        // captain breaks ties
+        if (a.isCaptain !== b.isCaptain) return a.isCaptain ? 1 : -1;
+
+        // stable fallback
+        return String(a.slotId).localeCompare(String(b.slotId));
+      });
+
+    return rated[0]?.slotId ?? null;
+  })();
+
+  // group by line -> lane (formation order)
   const groups: Record<LineKey, { L: LineupSlot[]; C: LineupSlot[]; R: LineupSlot[] }> = {
     ATT: { L: [], C: [], R: [] },
     AM: { L: [], C: [], R: [] },
@@ -84,56 +84,120 @@ export function LineupPitchPreview({ formation, slots, players }: Props) {
     GK: { L: [], C: [], R: [] },
   };
 
-  // Keep the formation’s slot order as the “source of truth”
   for (const meta of formation.slots ?? []) {
     const s = slots.find((x) => x.slotId === meta.slotId);
     if (!s) continue;
 
-    const line = guessLine(s.pos ?? meta.position);
-    const lane = guessLane(s.pos ?? meta.position);
+    const label = (s.pos ?? meta.position ?? "").trim();
+    const line = guessLine(label);
+    const lane = guessLane(label);
     groups[line][lane].push(s);
   }
 
-  const lines: LineKey[] = ["ATT", "AM", "MID", "DM", "DEF", "GK"];
+  // vertical line positions
+  const yByLine: Record<LineKey, number> = {
+    ATT: 10,
+    AM: 28,
+    MID: 46,
+    DM: 64,
+    DEF: 82,
+    GK: 94,
+  };
 
-  function pillText(s: LineupSlot) {
-    if (s.playerId == null) return s.pos; // show label if unassigned
-    const p = playerById.get(s.playerId);
-    if (!p) return `Player #${s.playerId}`;
+  // lane anchors (LM/LW left, RM/RW right)
+  const xByLane: Record<Lane, number> = { L: 14, C: 50, R: 86 };
+
+  function jitterX(base: number, idx: number, total: number) {
+    if (total <= 1) return base;
+    const spread = 18;
+    const step = spread / (total - 1);
+    const start = base - spread / 2;
+    const x = start + idx * step;
+    return Math.max(6, Math.min(94, x));
+  }
+
+  function playerNameFor(slot: LineupSlot) {
+    if (slot.playerId == null) return slot.pos;
+    const p = playerById.get(slot.playerId);
+    if (!p) return `Player #${slot.playerId}`;
     return `#${p.number} ${p.name}`;
   }
 
-  function Pill({ slot }: { slot: LineupSlot }) {
+  const positioned: PositionedSlot[] = [];
+  const lines: LineKey[] = ["ATT", "AM", "MID", "DM", "DEF", "GK"];
+
+  for (const line of lines) {
+    (["L", "C", "R"] as Lane[]).forEach((lane) => {
+      const items = groups[line][lane];
+      const baseX = xByLane[lane];
+      const y = yByLine[line];
+
+      items.forEach((slot, idx) => {
+        positioned.push({
+          slot,
+          xPct: jitterX(baseX, idx, items.length),
+          yPct: y,
+          label: playerNameFor(slot),
+          posLabel: (slot.pos ?? "").trim(),
+        });
+      });
+    });
+  }
+
+  function Pill({ ps }: { ps: PositionedSlot }) {
+    const { slot, label } = ps;
+    const isPotm = potmSlotId != null && slot.slotId === potmSlotId;
+
     return (
       <div
         style={{
-          border: "1px solid rgba(0,0,0,0.2)",
+          position: "absolute",
+          left: `${ps.xPct}%`,
+          top: `${ps.yPct}%`,
+          transform: "translate(-50%, -50%)",
+          border: isPotm ? "2px solid rgba(255,165,0,0.95)" : "1px solid rgba(0,0,0,0.25)",
           borderRadius: 999,
-          padding: "6px 12px",
-          minWidth: 90,
+          padding: "8px 12px",
+          minWidth: 140,
+          maxWidth: 190,
           textAlign: "center",
           background: "#fff",
+          boxShadow: isPotm
+            ? "0 0 0 4px rgba(255,165,0,0.18), 0 4px 10px rgba(0,0,0,0.12)"
+            : "0 2px 6px rgba(0,0,0,0.08)",
           fontSize: 13,
           whiteSpace: "nowrap",
           overflow: "hidden",
           textOverflow: "ellipsis",
         }}
-        title={pillText(slot)}
+        title={label}
       >
-        {pillText(slot)}
-        {slot.isCaptain ? " (C)" : ""}
-      </div>
-    );
-  }
+        {isPotm ? (
+          <div
+            style={{
+              display: "inline-block",
+              fontSize: 11,
+              fontWeight: 800,
+              padding: "2px 8px",
+              borderRadius: 999,
+              background: "rgba(255,165,0,0.18)",
+              border: "1px solid rgba(255,165,0,0.55)",
+              marginBottom: 6,
+            }}
+          >
+            🔥 POTM
+          </div>
+        ) : null}
 
-  function LaneRow({ items, justify }: { items: LineupSlot[]; justify: "flex-start" | "center" | "flex-end" }) {
-    if (items.length === 0) return null;
+        <div style={{ fontWeight: 600 }}>
+          {label}
+          {slot.isCaptain ? " (C)" : ""}
+        </div>
 
-    return (
-      <div style={{ display: "flex", justifyContent: justify, gap: 10, flexWrap: "wrap" }}>
-        {items.map((s) => (
-          <Pill key={s.slotId} slot={s} />
-        ))}
+        <div style={{ fontSize: 12, opacity: 0.75 }}>
+          {ps.posLabel || "—"}
+          {slot.rating != null ? ` • ⭐ ${slot.rating}` : ""}
+        </div>
       </div>
     );
   }
@@ -144,48 +208,58 @@ export function LineupPitchPreview({ formation, slots, players }: Props) {
 
       <div
         style={{
-          display: "grid",
-          gap: 14,
-          padding: 12,
-          border: "1px solid rgba(0,0,0,0.12)",
-          borderRadius: 14,
-          background: "rgba(0,0,0,0.02)",
+          position: "relative",
+          height: 520,
+          borderRadius: 16,
+          border: "1px solid rgba(0,0,0,0.15)",
+          background: "linear-gradient(rgba(0,0,0,0.02), rgba(0,0,0,0.01))",
+          overflow: "hidden",
         }}
       >
-        {lines.map((line) => {
-          const L = groups[line].L;
-          const C = groups[line].C;
-          const R = groups[line].R;
-          const count = L.length + C.length + R.length;
+        {/* pitch markings */}
+        <div
+          style={{
+            position: "absolute",
+            inset: 12,
+            border: "2px solid rgba(0,0,0,0.12)",
+            borderRadius: 12,
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            left: 12,
+            right: 12,
+            top: "50%",
+            height: 2,
+            background: "rgba(0,0,0,0.10)",
+            transform: "translateY(-1px)",
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: "50%",
+            width: 90,
+            height: 90,
+            borderRadius: 999,
+            border: "2px solid rgba(0,0,0,0.10)",
+            transform: "translate(-50%, -50%)",
+          }}
+        />
 
-          return (
-            <div key={line}>
-              <div style={{ fontWeight: 700, marginBottom: 6 }}>{lineTitle(line)}</div>
-
-              <div
-                style={{
-                  border: "1px dashed rgba(0,0,0,0.15)",
-                  borderRadius: 12,
-                  padding: "10px 10px",
-                  display: "grid",
-                  gap: 8,
-                }}
-              >
-                {count === 0 ? (
-                  <div style={{ textAlign: "center", opacity: 0.6, fontSize: 13 }}>No slots</div>
-                ) : (
-                  <>
-                    {/* ✅ Left lane hugs left, right hugs right */}
-                    <LaneRow items={L} justify="flex-start" />
-                    <LaneRow items={C} justify="center" />
-                    <LaneRow items={R} justify="flex-end" />
-                  </>
-                )}
-              </div>
-            </div>
-          );
-        })}
+        {positioned.length === 0 ? (
+          <div style={{ padding: 16, opacity: 0.7 }}>
+            No slots to display — create a formation first.
+          </div>
+        ) : (
+          positioned.map((ps) => <Pill key={ps.slot.slotId} ps={ps} />)
+        )}
       </div>
     </div>
   );
 }
+
+
+
