@@ -2,36 +2,45 @@ import type { Player } from "../models/Players";
 import type { Formation } from "../models/Formation";
 import type { LineupSlot } from "../models/Lineup";
 
-type LineKey = "ATT" | "AM" | "MID" | "DM" | "DEF" | "GK";
+type RowKey = "ATT" | "AM" | "MID" | "DM" | "DEF" | "GK";
 type Lane = "L" | "C" | "R";
 
-function normalizePos(pos: string) {
-  return (pos ?? "").toUpperCase().trim();
+function norm(s: string) {
+  return (s ?? "").toUpperCase().trim();
 }
 
-function guessLine(posRaw: string): LineKey {
-  const p = normalizePos(posRaw);
+function slotRow(slotId: string, posLabel: string): RowKey {
+  const p = norm(posLabel);
 
   if (p === "GK") return "GK";
   if (["LB", "LWB", "LCB", "CB", "RCB", "RB", "RWB"].includes(p)) return "DEF";
   if (["CDM", "DM", "LDM", "RDM"].includes(p)) return "DM";
-
-  // LM/RM treated as AM
   if (["CAM", "AM", "LAM", "RAM", "LM", "RM"].includes(p)) return "AM";
-
   if (["CM", "LCM", "RCM"].includes(p)) return "MID";
   if (["ST", "CF", "LW", "RW", "LF", "RF"].includes(p)) return "ATT";
+
+  const id = norm(slotId);
+  if (id.startsWith("GK")) return "GK";
+  if (id.startsWith("DEF")) return "DEF";
+  if (id.startsWith("ATT")) return "ATT";
+  if (id.startsWith("MID")) return "MID";
 
   return "MID";
 }
 
-function guessLane(posRaw: string): Lane {
-  const p = normalizePos(posRaw);
+function slotLane(posLabel: string): Lane {
+  const p = norm(posLabel);
 
-  if (["LM", "LW", "LB", "LWB", "LCB", "LDM", "LAM", "LF"].includes(p) || p.startsWith("L"))
+  if (
+    p.startsWith("L") ||
+    ["LB", "LWB", "LCB", "LM", "LDM", "LAM", "LW", "LF"].includes(p)
+  )
     return "L";
 
-  if (["RM", "RW", "RB", "RWB", "RCB", "RDM", "RAM", "RF"].includes(p) || p.startsWith("R"))
+  if (
+    p.startsWith("R") ||
+    ["RB", "RWB", "RCB", "RM", "RDM", "RAM", "RW", "RF"].includes(p)
+  )
     return "R";
 
   return "C";
@@ -41,41 +50,43 @@ type Props = {
   formation: Formation;
   slots: LineupSlot[];
   players: Player[];
+
+  // click selection (optional, keep if you use it)
+  onSlotClick?: (slotId: string) => void;
+  selectedSlotId?: string | null;
+
+  // ✅ NEW: drag-drop swap
+  onSwapSlots?: (fromSlotId: string, toSlotId: string) => void;
 };
 
-type PositionedSlot = {
-  slot: LineupSlot;
-  xPct: number;
-  yPct: number;
-  label: string;
-  posLabel: string;
-};
-
-export function LineupPitchPreview({ formation, slots, players }: Props) {
+export function LineupPitchPreview({
+  formation,
+  slots,
+  players,
+  onSlotClick,
+  selectedSlotId,
+  onSwapSlots,
+}: Props) {
   const playerById = new Map(players.map((p) => [p.id, p]));
 
-  // 🔥 POTM = highest rating among assigned players
   const potmSlotId = (() => {
-    const rated = slots
-      .filter((s) => s.playerId != null && s.rating != null)
-      .slice()
-      .sort((a, b) => {
-        // rating desc
-        const r = (b.rating ?? -999) - (a.rating ?? -999);
-        if (r !== 0) return r;
-
-        // captain breaks ties
-        if (a.isCaptain !== b.isCaptain) return a.isCaptain ? 1 : -1;
-
-        // stable fallback
-        return String(a.slotId).localeCompare(String(b.slotId));
-      });
-
-    return rated[0]?.slotId ?? null;
+    let best: { slotId: string; rating: number } | null = null;
+    for (const s of slots) {
+      const r = typeof s.rating === "number" ? s.rating : null;
+      if (r == null) continue;
+      if (!best || r > best.rating) best = { slotId: s.slotId, rating: r };
+    }
+    return best?.slotId ?? null;
   })();
 
-  // group by line -> lane (formation order)
-  const groups: Record<LineKey, { L: LineupSlot[]; C: LineupSlot[]; R: LineupSlot[] }> = {
+  // Keep formation order
+  const ordered: LineupSlot[] = [];
+  for (const meta of formation.slots ?? []) {
+    const s = slots.find((x) => x.slotId === meta.slotId);
+    if (s) ordered.push(s);
+  }
+
+  const groups: Record<RowKey, Record<Lane, LineupSlot[]>> = {
     ATT: { L: [], C: [], R: [] },
     AM: { L: [], C: [], R: [] },
     MID: { L: [], C: [], R: [] },
@@ -84,182 +95,213 @@ export function LineupPitchPreview({ formation, slots, players }: Props) {
     GK: { L: [], C: [], R: [] },
   };
 
-  for (const meta of formation.slots ?? []) {
-    const s = slots.find((x) => x.slotId === meta.slotId);
-    if (!s) continue;
-
-    const label = (s.pos ?? meta.position ?? "").trim();
-    const line = guessLine(label);
-    const lane = guessLane(label);
-    groups[line][lane].push(s);
+  for (const s of ordered) {
+    const label = s.pos ?? "";
+    const row = slotRow(s.slotId, label);
+    const lane = slotLane(label);
+    groups[row][lane].push(s);
   }
 
-  // vertical line positions
-  const yByLine: Record<LineKey, number> = {
-    ATT: 10,
+  // row positions on the pitch
+  const yForRow: Record<RowKey, number> = {
+    ATT: 14,
     AM: 28,
-    MID: 46,
-    DM: 64,
-    DEF: 82,
-    GK: 94,
+    MID: 44,
+    DM: 60,
+    DEF: 76,
+    GK: 90,
   };
 
-  // lane anchors (LM/LW left, RM/RW right)
-  const xByLane: Record<Lane, number> = { L: 14, C: 50, R: 86 };
+  const laneX: Record<Lane, number> = { L: 18, C: 50, R: 82 };
 
-  function jitterX(base: number, idx: number, total: number) {
-    if (total <= 1) return base;
-    const spread = 18;
-    const step = spread / (total - 1);
+  function spreadX(base: number, idx: number, count: number) {
+    if (count <= 1) return base;
+    const spread = 22;
     const start = base - spread / 2;
-    const x = start + idx * step;
-    return Math.max(6, Math.min(94, x));
+    const step = spread / (count - 1);
+    return start + idx * step;
   }
 
-  function playerNameFor(slot: LineupSlot) {
-    if (slot.playerId == null) return slot.pos;
-    const p = playerById.get(slot.playerId);
-    if (!p) return `Player #${slot.playerId}`;
-    return `#${p.number} ${p.name}`;
-  }
-
-  const positioned: PositionedSlot[] = [];
-  const lines: LineKey[] = ["ATT", "AM", "MID", "DM", "DEF", "GK"];
-
-  for (const line of lines) {
+  const placements: Array<{ slot: LineupSlot; xPct: number; yPct: number }> = [];
+  (["ATT", "AM", "MID", "DM", "DEF", "GK"] as RowKey[]).forEach((row) => {
     (["L", "C", "R"] as Lane[]).forEach((lane) => {
-      const items = groups[line][lane];
-      const baseX = xByLane[lane];
-      const y = yByLine[line];
-
-      items.forEach((slot, idx) => {
-        positioned.push({
-          slot,
-          xPct: jitterX(baseX, idx, items.length),
-          yPct: y,
-          label: playerNameFor(slot),
-          posLabel: (slot.pos ?? "").trim(),
-        });
-      });
+      const arr = groups[row][lane];
+      const base = laneX[lane];
+      const y = yForRow[row];
+      arr.forEach((slot, i) =>
+        placements.push({ slot, xPct: spreadX(base, i, arr.length), yPct: y })
+      );
     });
+  });
+
+  function labelFor(slot: LineupSlot) {
+    if (slot.playerId == null) return slot.pos || "—";
+    const p = playerById.get(slot.playerId);
+    return p ? `Player #${p.number}` : `Player #${slot.playerId}`;
   }
 
-  function Pill({ ps }: { ps: PositionedSlot }) {
-    const { slot, label } = ps;
-    const isPotm = potmSlotId != null && slot.slotId === potmSlotId;
+  function PlayerPill({ slot }: { slot: LineupSlot }) {
+    const label = labelFor(slot);
+    const pos = slot.pos ?? "";
+    const r = typeof slot.rating === "number" ? slot.rating : null;
+
+    const isPotm = potmSlotId != null && slot.slotId === potmSlotId && r != null;
+    const isSelected = selectedSlotId != null && slot.slotId === selectedSlotId;
+
+    const draggableEnabled = !!onSwapSlots;
 
     return (
-      <div
-        style={{
-          position: "absolute",
-          left: `${ps.xPct}%`,
-          top: `${ps.yPct}%`,
-          transform: "translate(-50%, -50%)",
-          border: isPotm ? "2px solid rgba(255,165,0,0.95)" : "1px solid rgba(0,0,0,0.25)",
-          borderRadius: 999,
-          padding: "8px 12px",
-          minWidth: 140,
-          maxWidth: 190,
-          textAlign: "center",
-          background: "#fff",
-          boxShadow: isPotm
-            ? "0 0 0 4px rgba(255,165,0,0.18), 0 4px 10px rgba(0,0,0,0.12)"
-            : "0 2px 6px rgba(0,0,0,0.08)",
-          fontSize: 13,
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
+      <button
+        type="button"
+        onClick={() => onSlotClick?.(slot.slotId)}
+        draggable={draggableEnabled}
+        onDragStart={(e) => {
+          if (!onSwapSlots) return;
+          e.dataTransfer.setData("text/plain", slot.slotId);
+          e.dataTransfer.effectAllowed = "move";
         }}
-        title={label}
+        onDragOver={(e) => {
+          if (!onSwapSlots) return;
+          e.preventDefault(); // allow drop
+          e.dataTransfer.dropEffect = "move";
+        }}
+        onDrop={(e) => {
+          if (!onSwapSlots) return;
+          e.preventDefault();
+          const fromSlotId = e.dataTransfer.getData("text/plain");
+          const toSlotId = slot.slotId;
+
+          if (!fromSlotId || fromSlotId === toSlotId) return;
+          onSwapSlots(fromSlotId, toSlotId);
+        }}
+        style={{
+          width: 170,
+          padding: "10px 12px",
+          borderRadius: 999,
+          background: "#fff",
+          cursor: onSlotClick || onSwapSlots ? "pointer" : "default",
+          border: isSelected
+            ? "3px solid #4f46e5"
+            : isPotm
+            ? "2px solid #ff9900"
+            : "1px solid rgba(0,0,0,0.22)",
+          boxShadow: isSelected
+            ? "0 8px 18px rgba(79,70,229,0.25)"
+            : isPotm
+            ? "0 6px 16px rgba(255,153,0,0.25)"
+            : "0 6px 14px rgba(0,0,0,0.10)",
+          textAlign: "center",
+          position: "relative",
+          userSelect: "none",
+        }}
+        title={draggableEnabled ? `${label} (drag to swap)` : label}
       >
         {isPotm ? (
           <div
             style={{
-              display: "inline-block",
-              fontSize: 11,
-              fontWeight: 800,
-              padding: "2px 8px",
+              position: "absolute",
+              top: -10,
+              right: 12,
+              background: "#fff3e0",
+              border: "1px solid #ffcc80",
               borderRadius: 999,
-              background: "rgba(255,165,0,0.18)",
-              border: "1px solid rgba(255,165,0,0.55)",
-              marginBottom: 6,
+              padding: "2px 10px",
+              fontSize: 12,
+              fontWeight: 800,
+              color: "#7a4a00",
             }}
           >
             🔥 POTM
           </div>
         ) : null}
 
-        <div style={{ fontWeight: 600 }}>
+        <div style={{ fontWeight: 800, fontSize: 14 }}>
           {label}
           {slot.isCaptain ? " (C)" : ""}
         </div>
 
-        <div style={{ fontSize: 12, opacity: 0.75 }}>
-          {ps.posLabel || "—"}
-          {slot.rating != null ? ` • ⭐ ${slot.rating}` : ""}
+        <div style={{ marginTop: 2, fontSize: 12, opacity: 0.8 }}>
+          {pos || "—"}
+          {r != null ? (
+            <>
+              {" "}
+              • ⭐ <span style={{ fontWeight: 700 }}>{r}</span>
+            </>
+          ) : null}
         </div>
-      </div>
+      </button>
     );
   }
 
   return (
     <div style={{ marginTop: 14 }}>
-      <div style={{ fontWeight: 700, marginBottom: 8 }}>Pitch preview</div>
+      <div style={{ fontWeight: 800, marginBottom: 10 }}>Pitch preview</div>
 
       <div
         style={{
           position: "relative",
+          width: "100%",
           height: 520,
-          borderRadius: 16,
-          border: "1px solid rgba(0,0,0,0.15)",
-          background: "linear-gradient(rgba(0,0,0,0.02), rgba(0,0,0,0.01))",
+          borderRadius: 18,
           overflow: "hidden",
+          border: "1px solid rgba(0,0,0,0.12)",
+          background: "linear-gradient(180deg, rgba(46,139,87,0.20), rgba(46,139,87,0.10))",
         }}
       >
-        {/* pitch markings */}
         <div
           style={{
             position: "absolute",
-            inset: 12,
-            border: "2px solid rgba(0,0,0,0.12)",
-            borderRadius: 12,
+            inset: 14,
+            borderRadius: 14,
+            border: "2px solid rgba(255,255,255,0.65)",
           }}
         />
         <div
           style={{
             position: "absolute",
-            left: 12,
-            right: 12,
+            left: 14,
+            right: 14,
             top: "50%",
             height: 2,
-            background: "rgba(0,0,0,0.10)",
+            background: "rgba(255,255,255,0.65)",
             transform: "translateY(-1px)",
           }}
         />
         <div
           style={{
             position: "absolute",
-            left: "50%",
             top: "50%",
-            width: 90,
-            height: 90,
+            left: "50%",
+            width: 120,
+            height: 120,
             borderRadius: 999,
-            border: "2px solid rgba(0,0,0,0.10)",
+            border: "2px solid rgba(255,255,255,0.65)",
             transform: "translate(-50%, -50%)",
           }}
         />
 
-        {positioned.length === 0 ? (
-          <div style={{ padding: 16, opacity: 0.7 }}>
-            No slots to display — create a formation first.
+        {placements.map(({ slot, xPct, yPct }) => (
+          <div
+            key={slot.slotId}
+            style={{
+              position: "absolute",
+              left: `${xPct}%`,
+              top: `${yPct}%`,
+              transform: "translate(-50%, -50%)",
+            }}
+          >
+            <PlayerPill slot={slot} />
           </div>
-        ) : (
-          positioned.map((ps) => <Pill key={ps.slot.slotId} ps={ps} />)
-        )}
+        ))}
       </div>
     </div>
   );
 }
+
+
+
+
+
 
 
 

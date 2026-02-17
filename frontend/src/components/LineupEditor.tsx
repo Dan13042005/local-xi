@@ -42,19 +42,17 @@ function mergeSlots(formation: Formation, existing: LineupSlot[] | undefined): L
   });
 }
 
-// ✅ Allows decimals; clamps to 0.0–10.0; preserves up to 1 dp (change if you want)
+// ✅ Allows decimals; clamps to 0.0–10.0; keeps 1dp (change if you want)
 function parseRating(raw: string): number | null {
   const t = raw.trim();
   if (t === "") return null;
 
-  // accept comma decimal too (e.g. "7,5")
   const normalized = t.replace(",", ".");
   const n = Number(normalized);
   if (Number.isNaN(n)) return null;
 
   const clamped = Math.min(10, Math.max(0, n));
-  // keep 1 decimal place (remove rounding if you want full precision)
-  return Math.round(clamped * 10) / 10;
+  return Math.round(clamped * 10) / 10; // 1dp
 }
 
 export function LineupEditor({ matchId, onClose, onSaved }: Props) {
@@ -68,21 +66,33 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  // ✅ selection state for click swap / bench assignment
+  const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
+  const [selectedBenchPlayerId, setSelectedBenchPlayerId] = useState<number | null>(null);
+
   const selectedFormation = useMemo(
     () => formations.find((f) => f.id === formationId) ?? null,
     [formations, formationId]
   );
 
+  // prevent duplicate players (on pitch)
   const selectedPlayerIds = useMemo(() => {
     const set = new Set<number>();
     for (const s of slots) if (s.playerId != null) set.add(s.playerId);
     return set;
   }, [slots]);
 
+  // bench = players not currently selected on pitch
+  const benchPlayers = useMemo(() => {
+    return players.filter((p) => !selectedPlayerIds.has(p.id));
+  }, [players, selectedPlayerIds]);
+
   useEffect(() => {
     (async () => {
       setLoading(true);
       setError("");
+      setSelectedSlotId(null);
+      setSelectedBenchPlayerId(null);
 
       try {
         const [ps, fs, existing] = await Promise.all([
@@ -92,7 +102,6 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
         ]);
 
         setPlayers([...ps].sort((a, b) => a.number - b.number));
-
         const sortedFormations = [...fs].sort((a, b) => a.name.localeCompare(b.name));
         setFormations(sortedFormations);
 
@@ -113,6 +122,20 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
     })();
   }, [matchId]);
 
+  function changeFormation(nextId: number) {
+    setError("");
+    setFormationId(nextId);
+    setSelectedSlotId(null);
+    setSelectedBenchPlayerId(null);
+
+    const f = formations.find((x) => x.id === nextId);
+    if (!f) {
+      setSlots([]);
+      return;
+    }
+    setSlots((prev) => mergeSlots(f, prev));
+  }
+
   function setPlayer(slotId: string, playerId: number | null) {
     setSlots((prev) => prev.map((s) => (s.slotId === slotId ? { ...s, playerId } : s)));
   }
@@ -131,16 +154,80 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
     setSlots((prev) => prev.map((s) => (s.slotId === slotId ? { ...s, rating } : s)));
   }
 
-  function changeFormation(nextId: number) {
-    setError("");
-    setFormationId(nextId);
+  // ✅ swap helper (used by click-swap AND drag-swap)
+  function swapSlots(fromSlotId: string, toSlotId: string) {
+    setSlots((prev) => {
+      const a = prev.find((x) => x.slotId === fromSlotId);
+      const b = prev.find((x) => x.slotId === toSlotId);
+      if (!a || !b) return prev;
 
-    const f = formations.find((x) => x.id === nextId);
-    if (!f) {
-      setSlots([]);
+      return prev.map((s) => {
+        if (s.slotId === a.slotId) {
+          return {
+            ...s,
+            playerId: b.playerId ?? null,
+            rating: b.rating ?? null,
+            isCaptain: !!b.isCaptain,
+          };
+        }
+        if (s.slotId === b.slotId) {
+          return {
+            ...s,
+            playerId: a.playerId ?? null,
+            rating: a.rating ?? null,
+            isCaptain: !!a.isCaptain,
+          };
+        }
+        return s;
+      });
+    });
+
+    setSelectedSlotId(null);
+    setSelectedBenchPlayerId(null);
+  }
+
+  // ✅ click a pitch pill
+  function handlePitchSlotClick(clickedSlotId: string) {
+    setError("");
+
+    // bench player armed => assign them to this slot
+    if (selectedBenchPlayerId != null) {
+      setSlots((prev) =>
+        prev.map((s) =>
+          s.slotId === clickedSlotId
+            ? {
+                ...s,
+                playerId: selectedBenchPlayerId,
+              }
+            : s
+        )
+      );
+      setSelectedBenchPlayerId(null);
+      setSelectedSlotId(null);
       return;
     }
-    setSlots((prev) => mergeSlots(f, prev));
+
+    // first click selects slot
+    if (selectedSlotId == null) {
+      setSelectedSlotId(clickedSlotId);
+      return;
+    }
+
+    // clicking same slot toggles off
+    if (selectedSlotId === clickedSlotId) {
+      setSelectedSlotId(null);
+      return;
+    }
+
+    // otherwise swap slot-to-slot
+    swapSlots(selectedSlotId, clickedSlotId);
+  }
+
+  // ✅ click a bench player to arm/unarm
+  function handleBenchClick(playerId: number) {
+    setError("");
+    setSelectedSlotId(null);
+    setSelectedBenchPlayerId((prev) => (prev === playerId ? null : playerId));
   }
 
   function validate(): string {
@@ -206,7 +293,7 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
         <div>
           <strong>Lineup for match #{matchId}</strong>
           <div style={{ opacity: 0.8, fontSize: 13, marginTop: 4 }}>
-            Select a saved formation, assign players + captain + ratings.
+            Bench click → pitch click assigns. Pitch click → pitch click swaps. Drag a pitch pill onto another to swap.
           </div>
         </div>
 
@@ -246,12 +333,70 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
         <p style={{ marginTop: 12, opacity: 0.8 }}>Create a formation first in the Formations page.</p>
       ) : (
         <>
+          {/* ✅ Pitch preview (click + drag swap) */}
           <div style={{ marginTop: 12 }}>
-            <LineupPitchPreview formation={selectedFormation} slots={slots} players={players} />
+            <LineupPitchPreview
+              formation={selectedFormation}
+              slots={slots}
+              players={players}
+              onSlotClick={handlePitchSlotClick}
+              selectedSlotId={selectedSlotId}
+              onSwapSlots={swapSlots}
+            />
+
             <LineupStatsDashboard formation={selectedFormation} slots={slots} players={players} />
           </div>
 
-          <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+          {/* ✅ Bench */}
+          <div style={{ marginTop: 14 }}>
+            <div style={{ fontWeight: 800, marginBottom: 8 }}>Bench</div>
+
+            {benchPlayers.length === 0 ? (
+              <div style={{ opacity: 0.7, fontSize: 13 }}>
+                No bench players (everyone is on the pitch).
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                {benchPlayers.map((p) => {
+                  const active = selectedBenchPlayerId === p.id;
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => handleBenchClick(p.id)}
+                      style={{
+                        borderRadius: 999,
+                        padding: "8px 12px",
+                        border: active ? "2px solid #4f46e5" : "1px solid rgba(0,0,0,0.22)",
+                        background: active ? "rgba(79,70,229,0.08)" : "#fff",
+                        boxShadow: active
+                          ? "0 8px 18px rgba(79,70,229,0.18)"
+                          : "0 6px 14px rgba(0,0,0,0.08)",
+                        cursor: "pointer",
+                        fontWeight: 700,
+                      }}
+                      title={`${p.name} (${p.positions.join(", ")})`}
+                    >
+                      #{p.number} {p.name}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {selectedBenchPlayerId != null ? (
+              <div style={{ marginTop: 8, fontSize: 13, opacity: 0.85 }}>
+                Bench player selected — click a pitch slot to assign.
+              </div>
+            ) : selectedSlotId != null ? (
+              <div style={{ marginTop: 8, fontSize: 13, opacity: 0.85 }}>
+                Pitch slot selected — click another pitch slot to swap.
+              </div>
+            ) : null}
+          </div>
+
+          {/* ✅ Editor rows (keep for precision edits) */}
+          <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
             {selectedFormation.slots.map((slotMeta) => {
               const slot = slots.find((s) => s.slotId === slotMeta.slotId);
               if (!slot) return null;
@@ -281,7 +426,8 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
                   >
                     <option value="">— Unassigned —</option>
                     {players.map((p) => {
-                      const takenByOtherSlot = p.id !== slot.playerId && selectedPlayerIds.has(p.id);
+                      const takenByOtherSlot =
+                        p.id !== slot.playerId && selectedPlayerIds.has(p.id);
                       return (
                         <option key={p.id} value={p.id} disabled={takenByOtherSlot}>
                           #{p.number} {p.name}
@@ -337,6 +483,12 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
     </div>
   );
 }
+
+
+
+
+
+
 
 
 
