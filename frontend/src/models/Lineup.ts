@@ -1,12 +1,19 @@
 // frontend/src/models/Lineup.ts
 
 export type LineupSlot = {
-  slotId: string;              // stable id from FormationSlot.slotId
-  pos: string;                 // label shown in UI (from FormationSlot.position)
+  slotId: string;
+  pos: string;
   playerId: number | null;
   isCaptain: boolean;
   rating: number | null;
+
+  // ✅ NEW (per-match stats)
+  goals?: number | null;
+  assists?: number | null;
+  yellowCards?: number | null;
+  redCards?: number | null;
 };
+
 
 export type Lineup = {
   id?: number;

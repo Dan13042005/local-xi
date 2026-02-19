@@ -51,12 +51,14 @@ type Props = {
   slots: LineupSlot[];
   players: Player[];
 
-  // click selection (optional, keep if you use it)
   onSlotClick?: (slotId: string) => void;
   selectedSlotId?: string | null;
 
-  // ✅ NEW: drag-drop swap
+  // swap pitch-to-pitch
   onSwapSlots?: (fromSlotId: string, toSlotId: string) => void;
+
+  // ✅ NEW: drop bench player -> pitch slot
+  onDropPlayerToSlot?: (slotId: string, playerId: number) => void;
 };
 
 export function LineupPitchPreview({
@@ -66,6 +68,7 @@ export function LineupPitchPreview({
   onSlotClick,
   selectedSlotId,
   onSwapSlots,
+  onDropPlayerToSlot,
 }: Props) {
   const playerById = new Map(players.map((p) => [p.id, p]));
 
@@ -102,7 +105,6 @@ export function LineupPitchPreview({
     groups[row][lane].push(s);
   }
 
-  // row positions on the pitch
   const yForRow: Record<RowKey, number> = {
     ATT: 14,
     AM: 28,
@@ -157,29 +159,48 @@ export function LineupPitchPreview({
         draggable={draggableEnabled}
         onDragStart={(e) => {
           if (!onSwapSlots) return;
-          e.dataTransfer.setData("text/plain", slot.slotId);
+          // ✅ pitch-to-pitch drag data
+          e.dataTransfer.setData("text/plain", `slot:${slot.slotId}`);
           e.dataTransfer.effectAllowed = "move";
         }}
         onDragOver={(e) => {
-          if (!onSwapSlots) return;
+          if (!onSwapSlots && !onDropPlayerToSlot) return;
           e.preventDefault(); // allow drop
           e.dataTransfer.dropEffect = "move";
         }}
         onDrop={(e) => {
-          if (!onSwapSlots) return;
           e.preventDefault();
-          const fromSlotId = e.dataTransfer.getData("text/plain");
+          const data = e.dataTransfer.getData("text/plain") || "";
           const toSlotId = slot.slotId;
 
-          if (!fromSlotId || fromSlotId === toSlotId) return;
-          onSwapSlots(fromSlotId, toSlotId);
+          // ✅ if bench player dropped
+          if (data.startsWith("player:")) {
+            const idStr = data.replace("player:", "").trim();
+            const playerId = Number(idStr);
+            if (!Number.isFinite(playerId)) return;
+            onDropPlayerToSlot?.(toSlotId, playerId);
+            return;
+          }
+
+          // ✅ if pitch slot dropped
+          if (data.startsWith("slot:")) {
+            const fromSlotId = data.replace("slot:", "").trim();
+            if (!fromSlotId || fromSlotId === toSlotId) return;
+            onSwapSlots?.(fromSlotId, toSlotId);
+            return;
+          }
+
+          // fallback: old behavior (if someone drops raw slotId)
+          if (data && data !== toSlotId) {
+            onSwapSlots?.(data, toSlotId);
+          }
         }}
         style={{
           width: 170,
           padding: "10px 12px",
           borderRadius: 999,
           background: "#fff",
-          cursor: onSlotClick || onSwapSlots ? "pointer" : "default",
+          cursor: onSlotClick || onSwapSlots || onDropPlayerToSlot ? "pointer" : "default",
           border: isSelected
             ? "3px solid #4f46e5"
             : isPotm
@@ -194,7 +215,13 @@ export function LineupPitchPreview({
           position: "relative",
           userSelect: "none",
         }}
-        title={draggableEnabled ? `${label} (drag to swap)` : label}
+        title={
+          onDropPlayerToSlot
+            ? `${label} (drop bench player to assign / drag to swap)`
+            : draggableEnabled
+            ? `${label} (drag to swap)`
+            : label
+        }
       >
         {isPotm ? (
           <div
@@ -297,6 +324,10 @@ export function LineupPitchPreview({
     </div>
   );
 }
+
+
+
+
 
 
 

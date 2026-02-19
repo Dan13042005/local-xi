@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import type { Player } from "../models/Players";
 import type { Formation } from "../models/Formation";
 import type { LineupSlot } from "../models/Lineup";
@@ -8,125 +9,134 @@ type Props = {
   players: Player[];
 };
 
+function n0(v: unknown): number {
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
 export function LineupStatsDashboard({ formation, slots, players }: Props) {
-  const playerById = new Map(players.map((p) => [p.id, p]));
+  const playerById = useMemo(() => new Map(players.map((p) => [p.id, p])), [players]);
 
-  const rows = (formation.slots ?? [])
-    .map((meta) => {
-      const s = slots.find((x) => x.slotId === meta.slotId);
-      if (!s) return null;
+  const stats = useMemo(() => {
+    const assigned = slots.filter((s) => s.playerId != null);
 
-      const p = s.playerId != null ? playerById.get(s.playerId) ?? null : null;
+    const totals = assigned.reduce(
+      (acc, s) => {
+        acc.goals += Math.max(0, Math.floor(n0((s as any).goals)));
+        acc.assists += Math.max(0, Math.floor(n0((s as any).assists)));
+        acc.yellow += Math.max(0, Math.floor(n0((s as any).yellowCards)));
+        acc.red += Math.max(0, Math.floor(n0((s as any).redCards)));
+        const r = typeof s.rating === "number" ? s.rating : null;
+        if (r != null) {
+          acc.ratingSum += r;
+          acc.ratingCount += 1;
+        }
+        return acc;
+      },
+      { goals: 0, assists: 0, yellow: 0, red: 0, ratingSum: 0, ratingCount: 0 }
+    );
 
-      return {
-        slotId: s.slotId,
-        pos: (s.pos ?? meta.position ?? "").trim(),
-        playerId: s.playerId,
-        captain: !!s.isCaptain,
-        rating: s.rating,
-        playerName: p ? `#${p.number} ${p.name}` : "—",
-      };
-    })
-    .filter(Boolean) as {
-    slotId: string;
-    pos: string;
-    playerId: number | null;
-    captain: boolean;
-    rating: number | null;
-    playerName: string;
-  }[];
+    const avgRating =
+      totals.ratingCount > 0 ? Math.round((totals.ratingSum / totals.ratingCount) * 10) / 10 : null;
 
-  const assigned = rows.filter((r) => r.playerId != null);
+    // leaders
+    const byMetric = (key: "goals" | "assists" | "yellowCards" | "redCards") => {
+      let best: { playerId: number; value: number } | null = null;
 
-  const avgRating = (() => {
-    const rated = assigned.filter((r) => r.rating != null);
-    if (rated.length === 0) return null;
-    const sum = rated.reduce((acc, r) => acc + (r.rating ?? 0), 0);
-    return Math.round((sum / rated.length) * 10) / 10;
-  })();
+      for (const s of assigned) {
+        const pid = s.playerId!;
+        const value = Math.max(0, Math.floor(n0((s as any)[key])));
+        if (value <= 0) continue;
 
-  const potm = (() => {
-    const rated = assigned
-      .filter((r) => r.rating != null)
-      .slice()
-      .sort((a, b) => {
-        const diff = (b.rating ?? -999) - (a.rating ?? -999);
-        if (diff !== 0) return diff;
-        if (a.captain !== b.captain) return a.captain ? 1 : -1;
-        return a.slotId.localeCompare(b.slotId);
-      });
-    return rated[0] ?? null;
-  })();
+        if (!best || value > best.value) best = { playerId: pid, value };
+      }
+      return best;
+    };
+
+    const topGoals = byMetric("goals");
+    const topAssists = byMetric("assists");
+    const topYellow = byMetric("yellowCards");
+    const topRed = byMetric("redCards");
+
+    return { assignedCount: assigned.length, totals, avgRating, topGoals, topAssists, topYellow, topRed };
+  }, [slots]);
+
+  function nameFor(playerId: number) {
+    const p = playerById.get(playerId);
+    return p ? `#${p.number} ${p.name}` : `Player #${playerId}`;
+  }
+
+  function Leader({
+    title,
+    icon,
+    entry,
+  }: {
+    title: string;
+    icon: string;
+    entry: { playerId: number; value: number } | null;
+  }) {
+    return (
+      <div style={{ border: "1px solid rgba(0,0,0,0.12)", borderRadius: 12, padding: 10 }}>
+        <div style={{ fontWeight: 800, marginBottom: 6 }}>{title}</div>
+        {entry ? (
+          <div style={{ fontSize: 13 }}>
+            <span style={{ marginRight: 6 }}>{icon}</span>
+            <strong>{entry.value}</strong> — {nameFor(entry.playerId)}
+          </div>
+        ) : (
+          <div style={{ fontSize: 13, opacity: 0.7 }}>None recorded</div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div style={{ marginTop: 14 }}>
-      <div style={{ fontWeight: 700, marginBottom: 8 }}>Player stats</div>
+      <div style={{ fontWeight: 800, marginBottom: 10 }}>Lineup stats</div>
 
       <div
         className="card"
         style={{
           padding: 12,
+          display: "grid",
+          gap: 12,
+          borderRadius: 14,
           border: "1px solid rgba(0,0,0,0.12)",
         }}
       >
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 14 }}>
+        {/* Totals */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 14, alignItems: "center" }}>
           <div>
-            <strong>Assigned:</strong> {assigned.length}/{rows.length}
+            <strong>Players assigned:</strong> {stats.assignedCount}/{(formation.slots ?? []).length}
           </div>
-          <div>
-            <strong>Avg rating:</strong> {avgRating != null ? `⭐ ${avgRating}` : "—"}
+
+          <div title="Goals">
+            <strong>⚽</strong> {stats.totals.goals}
           </div>
+          <div title="Assists">
+            <strong>🅰️</strong> {stats.totals.assists}
+          </div>
+          <div title="Yellow cards">
+            <strong>🟨</strong> {stats.totals.yellow}
+          </div>
+          <div title="Red cards">
+            <strong>🟥</strong> {stats.totals.red}
+          </div>
+
           <div>
-            <strong>POTM:</strong>{" "}
-            {potm ? (
-              <>
-                🔥 {potm.playerName} {potm.rating != null ? `(⭐ ${potm.rating})` : ""}
-              </>
-            ) : (
-              "—"
-            )}
+            <strong>Avg rating:</strong> {stats.avgRating == null ? "—" : stats.avgRating}
           </div>
         </div>
 
-        <div style={{ marginTop: 12, overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <th style={{ textAlign: "left", padding: "8px 6px" }}>Pos</th>
-                <th style={{ textAlign: "left", padding: "8px 6px" }}>Player</th>
-                <th style={{ textAlign: "left", padding: "8px 6px" }}>Captain</th>
-                <th style={{ textAlign: "left", padding: "8px 6px" }}>Rating</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => {
-                const isPotm = potm?.slotId === r.slotId;
-                return (
-                  <tr
-                    key={r.slotId}
-                    style={{
-                      background: isPotm ? "rgba(255,165,0,0.12)" : "transparent",
-                      borderTop: "1px solid rgba(0,0,0,0.08)",
-                    }}
-                  >
-                    <td style={{ padding: "8px 6px", fontWeight: 700 }}>{r.pos || "—"}</td>
-                    <td style={{ padding: "8px 6px" }}>{r.playerName}</td>
-                    <td style={{ padding: "8px 6px" }}>{r.captain ? "✅" : "—"}</td>
-                    <td style={{ padding: "8px 6px" }}>
-                      {r.rating != null ? `⭐ ${r.rating}` : "—"}
-                      {isPotm ? " 🔥" : ""}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-
-        <div style={{ marginTop: 10, opacity: 0.75, fontSize: 13 }}>
-          Ratings + POTM appear once you start saving ratings on lineup slots.
+        {/* Leaders */}
+        <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
+          <Leader title="Top scorer" icon="⚽" entry={stats.topGoals} />
+          <Leader title="Top assister" icon="🅰️" entry={stats.topAssists} />
+          <Leader title="Most yellows" icon="🟨" entry={stats.topYellow} />
+          <Leader title="Most reds" icon="🟥" entry={stats.topRed} />
         </div>
       </div>
     </div>
   );
 }
+

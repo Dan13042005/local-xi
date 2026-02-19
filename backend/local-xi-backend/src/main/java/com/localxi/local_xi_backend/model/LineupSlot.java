@@ -23,13 +23,25 @@ public class LineupSlot {
     @Column(name = "player_id")
     private Long playerId;
 
-    // captain flag
     @Column(name = "is_captain", nullable = false)
     private boolean isCaptain = false;
 
-    // rating out of 10 (nullable, supports decimals)
+    // rating out of 10 (nullable), supports decimals
     @Column
     private Double rating;
+
+    // ✅ Match events (nullable -> treat as 0 in UI)
+    @Column
+    private Integer goals;
+
+    @Column
+    private Integer assists;
+
+    @Column(name = "yellow_cards")
+    private Integer yellowCards;
+
+    @Column(name = "red_cards")
+    private Integer redCards;
 
     @JsonBackReference
     @ManyToOne(optional = false, fetch = FetchType.LAZY)
@@ -52,9 +64,20 @@ public class LineupSlot {
     public boolean isCaptain() { return isCaptain; }
     public void setCaptain(boolean captain) { isCaptain = captain; }
 
-    // ✅ FIXED — now Double
     public Double getRating() { return rating; }
     public void setRating(Double rating) { this.rating = rating; }
+
+    public Integer getGoals() { return goals; }
+    public void setGoals(Integer goals) { this.goals = goals; }
+
+    public Integer getAssists() { return assists; }
+    public void setAssists(Integer assists) { this.assists = assists; }
+
+    public Integer getYellowCards() { return yellowCards; }
+    public void setYellowCards(Integer yellowCards) { this.yellowCards = yellowCards; }
+
+    public Integer getRedCards() { return redCards; }
+    public void setRedCards(Integer redCards) { this.redCards = redCards; }
 
     public Lineup getLineup() { return lineup; }
     public void setLineup(Lineup lineup) { this.lineup = lineup; }

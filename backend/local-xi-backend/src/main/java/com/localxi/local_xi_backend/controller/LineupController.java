@@ -66,6 +66,11 @@ public class LineupController {
             slot.setPlayerId(s.getPlayerId());
             slot.setCaptain(s.isCaptain());
             slot.setRating(s.getRating());
+            slot.setGoals(s.getGoals());
+            slot.setAssists(s.getAssists());
+            slot.setYellowCards(s.getYellowCards());
+            slot.setRedCards(s.getRedCards());
+
 
             lineup.getSlots().add(slot);
         }
