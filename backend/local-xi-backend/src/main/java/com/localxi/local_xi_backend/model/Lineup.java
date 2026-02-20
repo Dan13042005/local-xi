@@ -1,10 +1,13 @@
 package com.localxi.local_xi_backend.model;
 
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
+
 import java.util.ArrayList;
 import java.util.List;
 
 @Entity
+@Table(name = "lineup")
 public class Lineup {
 
     @Id
@@ -15,15 +18,22 @@ public class Lineup {
     @Column(nullable = false, unique = true)
     private Long matchId;
 
-    // ✅ NEW: formation reference
+    // formation reference
     @Column(nullable = false)
     private Long formationId;
 
-    // For later (captain per match)
-    private Long captainPlayerId; // nullable ok
+    // captain player id (nullable ok)
+    private Long captainPlayerId;
 
+    // ✅ Slots (existing)
+    @JsonManagedReference
     @OneToMany(mappedBy = "lineup", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<LineupSlot> slots = new ArrayList<>();
+
+    // ✅ Option 1: per-player match stats stored separately
+    @JsonManagedReference(value = "lineup-stats")
+    @OneToMany(mappedBy = "lineup", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<LineupPlayerStat> playerStats = new ArrayList<>();
 
     public Lineup() {}
 
@@ -40,6 +50,9 @@ public class Lineup {
 
     public List<LineupSlot> getSlots() { return slots; }
     public void setSlots(List<LineupSlot> slots) { this.slots = slots; }
+
+    public List<LineupPlayerStat> getPlayerStats() { return playerStats; }
+    public void setPlayerStats(List<LineupPlayerStat> playerStats) { this.playerStats = playerStats; }
 }
 
 

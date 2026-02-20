@@ -248,14 +248,21 @@ export function LineupPitchPreview({
         </div>
 
         <div style={{ marginTop: 2, fontSize: 12, opacity: 0.8 }}>
-          {pos || "—"}
-          {r != null ? (
-            <>
+           {pos || "—"}
+           {r != null ? (
+             <>
               {" "}
               • ⭐ <span style={{ fontWeight: 700 }}>{r}</span>
-            </>
+             </>
           ) : null}
         </div>
+
+        <div style={{ marginTop: 4, fontSize: 12, display: "flex", justifyContent: "center", gap: 10 }}>
+           {((slot.goals ?? 0) > 0) && <span title="Goals">⚽ {slot.goals}</span>}
+          {((slot.assists ?? 0) > 0) && <span title="Assists">🅰️ {slot.assists}</span>}
+          {((slot.yellowCards ?? 0) > 0) && <span title="Yellow cards">🟨 {slot.yellowCards}</span>}
+          {((slot.redCards ?? 0) > 0) && <span title="Red cards">🟥 {slot.redCards}</span>}
+</div>
       </button>
     );
   }

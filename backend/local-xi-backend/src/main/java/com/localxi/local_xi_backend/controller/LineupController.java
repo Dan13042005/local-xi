@@ -1,6 +1,7 @@
 package com.localxi.local_xi_backend.controller;
 
 import com.localxi.local_xi_backend.model.Lineup;
+import com.localxi.local_xi_backend.model.LineupPlayerStat;
 import com.localxi.local_xi_backend.model.LineupSlot;
 import com.localxi.local_xi_backend.repository.LineupRepository;
 import org.springframework.http.ResponseEntity;
@@ -49,7 +50,9 @@ public class LineupController {
         lineup.setFormationId(payload.getFormationId());
         lineup.setCaptainPlayerId(payload.getCaptainPlayerId()); // nullable ok
 
-        // replace slots
+        // ----------------------------
+        // Replace slots (same as before)
+        // ----------------------------
         lineup.getSlots().clear();
         for (LineupSlot s : payload.getSlots()) {
             if (s.getSlotId() == null || s.getSlotId().trim().isEmpty()) {
@@ -66,16 +69,71 @@ public class LineupController {
             slot.setPlayerId(s.getPlayerId());
             slot.setCaptain(s.isCaptain());
             slot.setRating(s.getRating());
+
+            // ✅ Keep these for backwards compatibility if your frontend still sends them.
+            // They are NOT the source of truth anymore once you use playerStats.
             slot.setGoals(s.getGoals());
             slot.setAssists(s.getAssists());
             slot.setYellowCards(s.getYellowCards());
             slot.setRedCards(s.getRedCards());
 
-
             lineup.getSlots().add(slot);
         }
 
+        // --------------------------------------------
+        // ✅ Option 1: Replace playerStats (by playerId)
+        // --------------------------------------------
+        // If payload.playerStats exists, that becomes the source of truth.
+        // If it doesn't exist, we can optionally derive stats from slots (legacy).
+        lineup.getPlayerStats().clear();
+
+        if (payload.getPlayerStats() != null && !payload.getPlayerStats().isEmpty()) {
+            for (LineupPlayerStat ps : payload.getPlayerStats()) {
+                if (ps.getPlayerId() == null) {
+                    return ResponseEntity.badRequest().body("playerStats.playerId is required");
+                }
+
+                LineupPlayerStat stat = new LineupPlayerStat();
+                stat.setLineup(lineup);
+                stat.setPlayerId(ps.getPlayerId());
+                stat.setGoals(ps.getGoals());
+                stat.setAssists(ps.getAssists());
+                stat.setYellowCards(ps.getYellowCards());
+                stat.setRedCards(ps.getRedCards());
+
+                lineup.getPlayerStats().add(stat);
+            }
+        } else {
+            // Legacy fallback: derive per-player stats from slots (only if present)
+            // This makes older payloads still persist into the new table.
+            Map<Long, LineupPlayerStat> byPlayer = new HashMap<>();
+            for (LineupSlot s : payload.getSlots()) {
+                if (s.getPlayerId() == null) continue;
+
+                LineupPlayerStat stat = byPlayer.computeIfAbsent(s.getPlayerId(), pid -> {
+                    LineupPlayerStat x = new LineupPlayerStat();
+                    x.setLineup(lineup);
+                    x.setPlayerId(pid);
+                    x.setGoals(0);
+                    x.setAssists(0);
+                    x.setYellowCards(0);
+                    x.setRedCards(0);
+                    return x;
+                });
+
+                stat.setGoals((stat.getGoals() == null ? 0 : stat.getGoals()) + n0(s.getGoals()));
+                stat.setAssists((stat.getAssists() == null ? 0 : stat.getAssists()) + n0(s.getAssists()));
+                stat.setYellowCards((stat.getYellowCards() == null ? 0 : stat.getYellowCards()) + n0(s.getYellowCards()));
+                stat.setRedCards((stat.getRedCards() == null ? 0 : stat.getRedCards()) + n0(s.getRedCards()));
+            }
+            lineup.getPlayerStats().addAll(byPlayer.values());
+        }
+
         return ResponseEntity.ok(repo.save(lineup));
+    }
+
+    private int n0(Integer v) {
+        return v == null ? 0 : Math.max(0, v);
     }
 
     // POST /api/lineups/summaries   { "ids": [1,2,3] }

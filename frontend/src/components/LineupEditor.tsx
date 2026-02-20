@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Player } from "../models/Players";
 import type { Formation } from "../models/Formation";
-import type { Lineup, LineupSlot } from "../models/Lineup";
+import type { Lineup, LineupSlot, PlayerMatchStat } from "../models/Lineup";
 import { getPlayers } from "../api/playersAPI";
 import { getFormations } from "../api/formationsAPI";
 import { getLineupForMatch, saveLineupForMatch } from "../api/lineupsAPI";
@@ -13,6 +13,32 @@ type Props = {
   onClose: () => void;
   onSaved?: () => void;
 };
+
+type PlayerStats = {
+  goals: number | null;
+  assists: number | null;
+  yellowCards: number | null;
+  redCards: number | null;
+};
+
+type ParsedNumber = {
+  value: number | null; // null means blank
+  valid: boolean; // false means invalid input
+};
+
+function parseOptionalNonNegativeInt(raw: string): ParsedNumber {
+  const trimmed = raw.trim();
+  if (trimmed === "") return { value: null, valid: true };
+
+  const n = Number(trimmed);
+  if (!Number.isInteger(n) || n < 0) return { value: null, valid: false };
+
+  return { value: n, valid: true };
+}
+
+function emptyPlayerStats(): PlayerStats {
+  return { goals: null, assists: null, yellowCards: null, redCards: null };
+}
 
 function buildEmptySlots(formation: Formation): LineupSlot[] {
   return (formation.slots ?? []).map((s) => ({
@@ -55,6 +81,45 @@ function parseRating(raw: string): number | null {
   return Math.round(clamped * 10) / 10; // 1dp
 }
 
+function fromPlayerStatsArray(arr: PlayerMatchStat[] | undefined): Record<number, PlayerStats> {
+  const out: Record<number, PlayerStats> = {};
+  for (const s of arr ?? []) {
+    out[s.playerId] = {
+      goals: s.goals ?? null,
+      assists: s.assists ?? null,
+      yellowCards: s.yellowCards ?? null,
+      redCards: s.redCards ?? null,
+    };
+  }
+  return out;
+}
+
+// Backward compat: if stats were previously stored on slots, extract them by playerId
+function fromSlotsLegacy(slots: Array<any> | undefined): Record<number, PlayerStats> {
+  const out: Record<number, PlayerStats> = {};
+  for (const s of slots ?? []) {
+    if (s?.playerId == null) continue;
+    const pid = Number(s.playerId);
+    out[pid] = {
+      goals: s.goals ?? null,
+      assists: s.assists ?? null,
+      yellowCards: s.yellowCards ?? null,
+      redCards: s.redCards ?? null,
+    };
+  }
+  return out;
+}
+
+function toPlayerStatsArray(map: Record<number, PlayerStats>): PlayerMatchStat[] {
+  return Object.entries(map).map(([playerId, st]) => ({
+    playerId: Number(playerId),
+    goals: st.goals ?? null,
+    assists: st.assists ?? null,
+    yellowCards: st.yellowCards ?? null,
+    redCards: st.redCards ?? null,
+  }));
+}
+
 export function LineupEditor({ matchId, onClose, onSaved }: Props) {
   const [players, setPlayers] = useState<Player[]>([]);
   const [formations, setFormations] = useState<Formation[]>([]);
@@ -62,6 +127,9 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
 
   const [formationId, setFormationId] = useState<number | null>(null);
   const [slots, setSlots] = useState<LineupSlot[]>([]);
+
+  // ✅ Option 1: stats keyed by playerId
+  const [playerStatsById, setPlayerStatsById] = useState<Record<number, PlayerStats>>({});
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -86,6 +154,21 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
   const benchPlayers = useMemo(() => {
     return players.filter((p) => !selectedPlayerIds.has(p.id));
   }, [players, selectedPlayerIds]);
+
+  /**
+   * ✅ FRONTEND FIX:
+   * Provide slot.goals/assists/yellowCards/redCards for PitchPreview + StatsDashboard
+   * by merging stats from playerStatsById into each slot (display-only).
+   */
+  const slotsForDisplay = useMemo(() => {
+    return slots.map((s) => {
+      if (s.playerId == null) {
+        return { ...s, goals: null, assists: null, yellowCards: null, redCards: null };
+      }
+      const st = playerStatsById[s.playerId] ?? emptyPlayerStats();
+      return { ...s, ...st };
+    });
+  }, [slots, playerStatsById]);
 
   useEffect(() => {
     (async () => {
@@ -114,6 +197,15 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
         } else {
           setSlots([]);
         }
+
+        // ✅ Load stats:
+        // Prefer Option-1 payload field existing.playerStats, otherwise fall back to legacy slot stats
+        const loadedStats =
+          existing?.playerStats && existing.playerStats.length > 0
+            ? fromPlayerStatsArray(existing.playerStats)
+            : fromSlotsLegacy(existing?.slots as any);
+
+        setPlayerStatsById(loadedStats);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load lineup data.");
       } finally {
@@ -154,7 +246,21 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
     setSlots((prev) => prev.map((s) => (s.slotId === slotId ? { ...s, rating } : s)));
   }
 
+  // ✅ Option 1: stats setter (by playerId)
+  function setStatForPlayer(playerId: number | null, field: keyof PlayerStats, raw: string) {
+    if (playerId == null) return;
+
+    const parsed = parseOptionalNonNegativeInt(raw);
+    if (!parsed.valid) return;
+
+    setPlayerStatsById((prev) => {
+      const curr = prev[playerId] ?? emptyPlayerStats();
+      return { ...prev, [playerId]: { ...curr, [field]: parsed.value } };
+    });
+  }
+
   // ✅ swap helper (used by click-swap AND pitch drag swap)
+  // NOTE: stats follow playerId automatically (stored separately), so swap only moves players/ratings/captain
   function swapSlots(fromSlotId: string, toSlotId: string) {
     setSlots((prev) => {
       const a = prev.find((x) => x.slotId === fromSlotId);
@@ -230,7 +336,7 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
     setSelectedBenchPlayerId((prev) => (prev === playerId ? null : playerId));
   }
 
-  // ✅ NEW: drag bench player onto pitch slot
+  // ✅ drag bench player onto pitch slot
   function handleDropPlayerToSlot(slotId: string, playerId: number) {
     setError("");
     setSlots((prev) => prev.map((s) => (s.slotId === slotId ? { ...s, playerId } : s)));
@@ -256,6 +362,14 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
       if (s.rating < 0 || s.rating > 10) return "Ratings must be between 0 and 10.";
     }
 
+    // Defensive check for stats map
+    for (const [pidStr, st] of Object.entries(playerStatsById)) {
+      const pid = Number(pidStr);
+      if (!Number.isFinite(pid)) return "Invalid player stats detected.";
+      const vals = [st.goals, st.assists, st.yellowCards, st.redCards];
+      if (vals.some((v) => v != null && v < 0)) return "Stats must be 0 or higher.";
+    }
+
     return "";
   }
 
@@ -271,7 +385,13 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
     const payload: Lineup = {
       matchId,
       formationId: selectedFormation.id,
-      slots,
+      slots, // ✅ base slots
+      playerStats: toPlayerStatsArray(playerStatsById).filter((s) =>
+        (s.goals ?? 0) > 0 ||
+        (s.assists ?? 0) > 0 ||
+        (s.yellowCards ?? 0) > 0 ||
+        (s.redCards ?? 0) > 0
+      ), // ✅ Option 1 saved separately
     };
 
     setSaving(true);
@@ -294,6 +414,13 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
       </div>
     );
   }
+
+  const smallNumStyle: React.CSSProperties = {
+    width: "100%",
+    borderRadius: 8,
+    border: "1px solid rgba(0,0,0,0.2)",
+    padding: "6px 8px",
+  };
 
   return (
     <div className="card" style={{ padding: 12, marginTop: 12 }}>
@@ -345,7 +472,7 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
           <div style={{ marginTop: 12 }}>
             <LineupPitchPreview
               formation={selectedFormation}
-              slots={slots}
+              slots={slotsForDisplay} // ✅ FIX: provide goals/assists/cards on slots
               players={players}
               onSlotClick={handlePitchSlotClick}
               selectedSlotId={selectedSlotId}
@@ -353,7 +480,7 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
               onDropPlayerToSlot={handleDropPlayerToSlot}
             />
 
-            <LineupStatsDashboard formation={selectedFormation} slots={slots} players={players} />
+            <LineupStatsDashboard formation={selectedFormation} slots={slotsForDisplay} players={players} />
           </div>
 
           {/* ✅ Bench (click + drag) */}
@@ -410,18 +537,21 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
             ) : null}
           </div>
 
-          {/* Editor rows (optional) */}
+          {/* ✅ Editor rows + stats that stick to player */}
           <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
             {selectedFormation.slots.map((slotMeta) => {
               const slot = slots.find((s) => s.slotId === slotMeta.slotId);
               if (!slot) return null;
+
+              const stats =
+                slot.playerId != null ? playerStatsById[slot.playerId] ?? emptyPlayerStats() : emptyPlayerStats();
 
               return (
                 <div
                   key={slotMeta.slotId}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "150px 1fr 90px 120px",
+                    gridTemplateColumns: "150px 1fr 90px 120px 70px 70px 80px 80px",
                     gap: 10,
                     alignItems: "center",
                   }}
@@ -457,12 +587,7 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
                     value={slot.rating ?? ""}
                     onChange={(e) => setRating(slotMeta.slotId, e.target.value)}
                     disabled={saving}
-                    style={{
-                      width: "100%",
-                      borderRadius: 8,
-                      border: "1px solid rgba(0,0,0,0.2)",
-                      padding: "6px 8px",
-                    }}
+                    style={smallNumStyle}
                   />
 
                   <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -474,6 +599,63 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
                     />
                     Captain
                   </label>
+
+                  {/* Stats inputs (disabled until a player is assigned) */}
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    step={1}
+                    placeholder="G"
+                    value={stats.goals ?? ""}
+                    onChange={(e) => setStatForPlayer(slot.playerId ?? null, "goals", e.target.value)}
+                    disabled={saving || slot.playerId == null}
+                    style={smallNumStyle}
+                    title="Goals"
+                    aria-label={`${slotMeta.position} goals`}
+                  />
+
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    step={1}
+                    placeholder="A"
+                    value={stats.assists ?? ""}
+                    onChange={(e) => setStatForPlayer(slot.playerId ?? null, "assists", e.target.value)}
+                    disabled={saving || slot.playerId == null}
+                    style={smallNumStyle}
+                    title="Assists"
+                    aria-label={`${slotMeta.position} assists`}
+                  />
+
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    step={1}
+                    placeholder="YC"
+                    value={stats.yellowCards ?? ""}
+                    onChange={(e) => setStatForPlayer(slot.playerId ?? null, "yellowCards", e.target.value)}
+                    disabled={saving || slot.playerId == null}
+                    style={smallNumStyle}
+                    title="Yellow cards"
+                    aria-label={`${slotMeta.position} yellow cards`}
+                  />
+
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    step={1}
+                    placeholder="RC"
+                    value={stats.redCards ?? ""}
+                    onChange={(e) => setStatForPlayer(slot.playerId ?? null, "redCards", e.target.value)}
+                    disabled={saving || slot.playerId == null}
+                    style={smallNumStyle}
+                    title="Red cards"
+                    aria-label={`${slotMeta.position} red cards`}
+                  />
                 </div>
               );
             })}
@@ -492,21 +674,3 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
