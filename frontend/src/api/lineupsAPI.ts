@@ -54,7 +54,7 @@ export async function getLineupSummaries(
   const res = await fetch(`${BASE_URL}/api/lineups/summaries`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ matchIds }), // ✅ IMPORTANT: matchIds key
+    body: JSON.stringify({ ids: matchIds }), // ✅ must match backend
   });
 
   if (!res.ok) throw new Error(await asTextOrJsonError(res));

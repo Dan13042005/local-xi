@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Player } from "../models/Players";
 import { createPlayer, deletePlayers, getPlayers } from "../api/playersAPI";
+import { getPlayerTotals, type PlayerTotals } from "../api/playerStatsAPI";
 
 const POSITIONS = [
   "GK",
@@ -33,6 +34,10 @@ export function PlayersPage() {
 
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
 
+  // ✅ totals cache keyed by playerId
+  const [totalsById, setTotalsById] = useState<Record<number, PlayerTotals>>({});
+  const [totalsLoadingById, setTotalsLoadingById] = useState<Record<number, boolean>>({});
+
   async function refreshPlayers() {
     try {
       const data = await getPlayers();
@@ -45,11 +50,42 @@ export function PlayersPage() {
       const validIds = new Set(sorted.map((p) => p.id));
       setSelectedIds((prev) => prev.filter((id) => validIds.has(id)));
 
-      // clear any previous load error if we successfully loaded
       setError("");
     } catch (e) {
       setError(getErrorMessage(e));
     }
+  }
+
+  // ✅ public totals refresh (button + focus-trigger)
+  async function refreshTotals() {
+    const ids = players.map((p) => p.id);
+    if (ids.length === 0) return;
+
+    // mark loading for all
+    setTotalsLoadingById((prev) => {
+      const next = { ...prev };
+      for (const id of ids) next[id] = true;
+      return next;
+    });
+
+    const results = await Promise.allSettled(ids.map((id) => getPlayerTotals(id)));
+
+    // store successes
+    setTotalsById((prev) => {
+      const next = { ...prev };
+      results.forEach((res, idx) => {
+        const id = ids[idx];
+        if (res.status === "fulfilled") next[id] = res.value;
+      });
+      return next;
+    });
+
+    // clear loading for all
+    setTotalsLoadingById((prev) => {
+      const next = { ...prev };
+      for (const id of ids) next[id] = false;
+      return next;
+    });
   }
 
   // Load players once on page load
@@ -61,7 +97,61 @@ export function PlayersPage() {
         setLoading(false);
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ✅ Fetch totals for players we haven't loaded yet (stable; won't get stuck)
+  useEffect(() => {
+    let cancelled = false;
+
+    const idsToFetch = players
+      .map((p) => p.id)
+      .filter((id) => totalsById[id] == null);
+
+    if (idsToFetch.length === 0) return;
+
+    // mark loading for these ids
+    setTotalsLoadingById((prev) => {
+      const next = { ...prev };
+      for (const id of idsToFetch) next[id] = true;
+      return next;
+    });
+
+    (async () => {
+      const results = await Promise.allSettled(idsToFetch.map((id) => getPlayerTotals(id)));
+      if (cancelled) return;
+
+      setTotalsById((prev) => {
+        const next = { ...prev };
+        results.forEach((res, idx) => {
+          const id = idsToFetch[idx];
+          if (res.status === "fulfilled") next[id] = res.value;
+        });
+        return next;
+      });
+
+      setTotalsLoadingById((prev) => {
+        const next = { ...prev };
+        for (const id of idsToFetch) next[id] = false;
+        return next;
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [players, totalsById]);
+
+  // ✅ When you come back to the window/tab, refresh totals
+  useEffect(() => {
+    const onFocus = () => {
+      // refresh totals when returning from Matches page after saving
+      refreshTotals().catch(() => {});
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [players]);
 
   function toggleSelected(id: number) {
     setSelectedIds((prev) =>
@@ -83,6 +173,20 @@ export function PlayersPage() {
 
     try {
       await deletePlayers(selectedIds);
+
+      // remove deleted totals from cache
+      setTotalsById((prev) => {
+        const next = { ...prev };
+        for (const id of selectedIds) delete next[id];
+        return next;
+      });
+
+      setTotalsLoadingById((prev) => {
+        const next = { ...prev };
+        for (const id of selectedIds) delete next[id];
+        return next;
+      });
+
       setSelectedIds([]);
       await refreshPlayers();
     } catch (e) {
@@ -90,7 +194,7 @@ export function PlayersPage() {
     }
   }
 
-  // ---------- B1: disable Add Player until form is valid ----------
+  // ---------- disable Add Player until form is valid ----------
   const trimmedName = name.trim();
   const numberAsNumber = Number(number);
 
@@ -121,7 +225,6 @@ export function PlayersPage() {
     e.preventDefault();
     setError("");
 
-    // extra safety: button should block it, but this prevents any edge case
     if (!canSubmit) return;
 
     try {
@@ -143,6 +246,14 @@ export function PlayersPage() {
   }
 
   const allSelected = players.length > 0 && selectedIds.length === players.length;
+  const totalsHeader = useMemo(() => "Career totals (G/A/YC/RC)", []);
+
+  function renderTotals(playerId: number) {
+    if (totalsLoadingById[playerId]) return "…";
+    const t = totalsById[playerId];
+    if (!t) return "⚽ 0  🅰️ 0  🟨 0  🟥 0";
+    return `⚽ ${t.goals}  🅰️ ${t.assists}  🟨 ${t.yellowCards}  🟥 ${t.redCards}`;
+  }
 
   if (loading) return <p>Loading players...</p>;
 
@@ -198,10 +309,7 @@ export function PlayersPage() {
             Add Player
           </button>
 
-          {/* optional hint shown only when button is disabled and no backend error is being shown */}
-          {!canSubmit && !error && submitHint ? (
-            <p className="error">{submitHint}</p>
-          ) : null}
+          {!canSubmit && !error && submitHint ? <p className="error">{submitHint}</p> : null}
 
           <button
             type="button"
@@ -216,6 +324,13 @@ export function PlayersPage() {
         {error ? <p className="error">{error}</p> : null}
       </form>
 
+      {/* ✅ Manual refresh for totals */}
+      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
+        <button type="button" onClick={refreshTotals}>
+          Refresh Totals
+        </button>
+      </div>
+
       <table>
         <thead>
           <tr>
@@ -229,6 +344,7 @@ export function PlayersPage() {
             <th>No.</th>
             <th>Name</th>
             <th>Positions</th>
+            <th title={totalsHeader}>Totals</th>
           </tr>
         </thead>
 
@@ -245,6 +361,7 @@ export function PlayersPage() {
               <td>{player.number}</td>
               <td>{player.name}</td>
               <td>{player.positions.join(", ")}</td>
+              <td style={{ whiteSpace: "nowrap" }}>{renderTotals(player.id)}</td>
             </tr>
           ))}
         </tbody>
@@ -252,9 +369,3 @@ export function PlayersPage() {
     </section>
   );
 }
-
-
-
-
-
-

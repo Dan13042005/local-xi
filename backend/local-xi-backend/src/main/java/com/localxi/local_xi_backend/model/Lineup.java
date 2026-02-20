@@ -14,23 +14,21 @@ public class Lineup {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // 1 lineup per match (enforced in DB with unique constraint)
     @Column(nullable = false, unique = true)
     private Long matchId;
 
-    // formation reference
     @Column(nullable = false)
     private Long formationId;
 
     // captain player id (nullable ok)
     private Long captainPlayerId;
 
-    // ✅ Slots (existing)
-    @JsonManagedReference
+    // ✅ Slots
+    @JsonManagedReference(value = "lineup-slots")
     @OneToMany(mappedBy = "lineup", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<LineupSlot> slots = new ArrayList<>();
 
-    // ✅ Option 1: per-player match stats stored separately
+    // ✅ Player stats (separate table)
     @JsonManagedReference(value = "lineup-stats")
     @OneToMany(mappedBy = "lineup", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<LineupPlayerStat> playerStats = new ArrayList<>();

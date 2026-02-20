@@ -61,3 +61,24 @@ WHERE TABLE_NAME = 'LINEUP_SLOT'
 	at org.apache.tomcat.util.threads.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:659)
 	at org.apache.tomcat.util.threads.TaskThread$WrappingRunnable.run(TaskThread.java:63)
 	at java.base/java.lang.Thread.run(Thread.java:840)
+2026-02-20 14:16:20.375870Z jdbc[13]: exception
+org.h2.jdbc.JdbcSQLSyntaxErrorException: Table "PLAYERS" not found; SQL statement:
+SELECT * FROM PLAYERS [42102-232]
+2026-02-20 14:16:24.190591Z jdbc[13]: exception
+org.h2.jdbc.JdbcSQLSyntaxErrorException: Table "PLAYERS" not found; SQL statement:
+SELECT * FROM PLAYERS [42102-232]
+2026-02-20 14:17:33.967508Z jdbc[13]: exception
+org.h2.jdbc.JdbcSQLSyntaxErrorException: Table "PLAYER" not found; SQL statement:
+SELECT * FROM PLAYER [42102-232]
+2026-02-20 14:17:39.690791Z jdbc[13]: exception
+org.h2.jdbc.JdbcSQLSyntaxErrorException: Table "PLAYER" not found; SQL statement:
+SELECT * FROM PLAYER [42102-232]
+2026-02-20 14:22:45.442725Z jdbc[13]: exception
+org.h2.jdbc.JdbcSQLSyntaxErrorException: Syntax error in SQL statement "[*]spring.datasource.url=..."; expected "SAVEPOINT, SCRIPT, SHUTDOWN"; SQL statement:
+spring.datasource.url=... [42001-232]
+2026-02-20 14:22:51.800266Z jdbc[13]: exception
+org.h2.jdbc.JdbcSQLSyntaxErrorException: Syntax error in SQL statement "[*]spring.datasource.url="; expected "SAVEPOINT, SCRIPT, SHUTDOWN"; SQL statement:
+spring.datasource.url= [42001-232]
+2026-02-20 14:23:29.247437Z jdbc[13]: exception
+org.h2.jdbc.JdbcSQLSyntaxErrorException: Syntax error in SQL statement "[*]src/main/resources/application.properties"; expected "SAVEPOINT, SCRIPT, SHUTDOWN"; SQL statement:
+src/main/resources/application.properties [42001-232]

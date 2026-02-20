@@ -43,7 +43,7 @@ public class LineupSlot {
     @Column(name = "red_cards")
     private Integer redCards;
 
-    @JsonBackReference
+    @JsonBackReference(value = "lineup-slots")
     @ManyToOne(optional = false, fetch = FetchType.LAZY)
     @JoinColumn(name = "lineup_id", nullable = false)
     private Lineup lineup;

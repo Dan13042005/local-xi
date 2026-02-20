@@ -1,72 +1,70 @@
 package com.localxi.local_xi_backend.controller;
 
 import com.localxi.local_xi_backend.model.Player;
+import com.localxi.local_xi_backend.repository.PlayerRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.*;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.Comparator;
+import java.util.List;
 
 @CrossOrigin(
         origins = "http://localhost:5173",
         allowedHeaders = "*",
-        methods = {RequestMethod.GET, RequestMethod.POST, RequestMethod.DELETE, RequestMethod.OPTIONS}
+        methods = {RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.DELETE}
 )
 @RestController
 @RequestMapping("/api/players")
 public class PlayerController {
 
-    private final List<Player> players = new ArrayList<>();
-    private final AtomicLong idCounter = new AtomicLong(1);
+    private final PlayerRepository repo;
 
-    // GET all players
+    public PlayerController(PlayerRepository repo) {
+        this.repo = repo;
+    }
+
     @GetMapping
-    public List<Player> getPlayers() {
-        return players;
+    public List<Player> getAll() {
+        List<Player> out = repo.findAll();
+        out.sort(Comparator.comparingInt(Player::getNumber));
+        return out;
     }
 
-    // CREATE player
     @PostMapping
-    public ResponseEntity<?> createPlayer(@RequestBody Player player) {
-
-        if (player.getName() == null || player.getName().trim().isEmpty()) {
-            return ResponseEntity.badRequest().body("Name is required");
+    public ResponseEntity<?> create(@RequestBody Player payload) {
+        if (payload.getName() == null || payload.getName().trim().isEmpty()) {
+            return ResponseEntity.badRequest().body("name is required");
+        }
+        if (payload.getPositions() == null || payload.getPositions().isEmpty()) {
+            return ResponseEntity.badRequest().body("positions are required");
+        }
+        if (payload.getNumber() < 1 || payload.getNumber() > 99) {
+            return ResponseEntity.badRequest().body("number must be 1–99");
+        }
+        if (repo.existsByNumber(payload.getNumber())) {
+            return ResponseEntity.badRequest().body("shirt number already exists");
         }
 
-        if (player.getPositions() == null || player.getPositions().isEmpty()) {
-            return ResponseEntity.badRequest().body("At least one position is required");
-        }
+        Player p = new Player();
+        p.setName(payload.getName().trim());
+        p.setPositions(payload.getPositions());
+        p.setNumber(payload.getNumber());
 
-        if (player.getNumber() < 1 || player.getNumber() > 99) {
-            return ResponseEntity.badRequest().body("Shirt number must be 1–99");
-        }
-
-        // prevent duplicate shirt number
-        boolean taken = players.stream().anyMatch(p -> p.getNumber() == player.getNumber());
-        if (taken) {
-            return ResponseEntity.badRequest().body("Shirt number already taken");
-        }
-
-        player.setId(idCounter.getAndIncrement());
-        players.add(player);
-        return ResponseEntity.ok(player);
+        return ResponseEntity.ok(repo.save(p));
     }
 
-    // BULK DELETE
-    @PostMapping("/bulk-delete")
-    public ResponseEntity<?> bulkDelete(@RequestBody IdsRequest request) {
-        if (request == null || request.ids == null || request.ids.isEmpty()) {
-            return ResponseEntity.badRequest().body("No ids provided");
+    // DELETE /api/players   body: [1,2,3]
+    @DeleteMapping
+    public ResponseEntity<?> deleteMany(@RequestBody List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return ResponseEntity.badRequest().body("ids are required");
         }
 
-        Set<Long> toDelete = new HashSet<>(request.ids);
-        players.removeIf(p -> p.getId() != null && toDelete.contains(p.getId()));
-
+        List<Player> existing = repo.findAllById(ids);
+        if (!existing.isEmpty()) {
+            repo.deleteAll(existing);
+        }
         return ResponseEntity.ok().build();
-    }
-
-    public static class IdsRequest {
-        public List<Long> ids;
     }
 }
 
