@@ -30,7 +30,7 @@ public class LineupSlot {
     @Column
     private Double rating;
 
-    // ✅ Match events (nullable -> treat as 0 in UI)
+    // Match events (nullable -> treat as 0 in UI)
     @Column
     private Integer goals;
 
@@ -43,7 +43,8 @@ public class LineupSlot {
     @Column(name = "red_cards")
     private Integer redCards;
 
-    @JsonBackReference(value = "lineup-slots")
+    // ✅ IMPORTANT: value must match Lineup's @JsonManagedReference(value="lineup")
+    @JsonBackReference(value = "lineup")
     @ManyToOne(optional = false, fetch = FetchType.LAZY)
     @JoinColumn(name = "lineup_id", nullable = false)
     private Lineup lineup;

@@ -3,6 +3,8 @@ package com.localxi.local_xi_backend.model;
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import jakarta.persistence.*;
 
+import java.util.Objects;
+
 @Entity
 @Table(
         name = "lineup_player_stat",
@@ -56,4 +58,24 @@ public class LineupPlayerStat {
 
     public Integer getRedCards() { return redCards; }
     public void setRedCards(Integer redCards) { this.redCards = redCards; }
+
+    // ✅ Critical for Set behavior:
+    // Treat (lineup_id, player_id) as the natural key.
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof LineupPlayerStat other)) return false;
+
+        Long thisLineupId = (this.lineup != null ? this.lineup.getId() : null);
+        Long otherLineupId = (other.lineup != null ? other.lineup.getId() : null);
+
+        return Objects.equals(thisLineupId, otherLineupId)
+                && Objects.equals(this.playerId, other.playerId);
+    }
+
+    @Override
+    public int hashCode() {
+        Long lineupId = (lineup != null ? lineup.getId() : null);
+        return Objects.hash(lineupId, playerId);
+    }
 }

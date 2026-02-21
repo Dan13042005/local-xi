@@ -4,6 +4,7 @@ import com.localxi.local_xi_backend.model.Lineup;
 import com.localxi.local_xi_backend.model.LineupPlayerStat;
 import com.localxi.local_xi_backend.model.LineupSlot;
 import com.localxi.local_xi_backend.repository.LineupRepository;
+import jakarta.transaction.Transactional;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -28,13 +29,14 @@ public class LineupController {
     // GET /api/lineups/match/{matchId}
     @GetMapping("/match/{matchId}")
     public ResponseEntity<?> getLineupForMatch(@PathVariable Long matchId) {
-        return repo.findByMatchId(matchId)
+        return repo.findByMatchIdWithDetails(matchId)
                 .<ResponseEntity<?>>map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.status(404).body("No lineup for match " + matchId));
     }
 
     // PUT /api/lineups/match/{matchId}
     @PutMapping("/match/{matchId}")
+    @Transactional
     public ResponseEntity<?> upsertForMatch(@PathVariable Long matchId, @RequestBody Lineup payload) {
 
         if (payload.getFormationId() == null) {
@@ -44,14 +46,15 @@ public class LineupController {
             return ResponseEntity.badRequest().body("slots are required");
         }
 
-        Lineup lineup = repo.findByMatchId(matchId).orElseGet(Lineup::new);
+        // ✅ load with children so updating stats doesn't hit lazy/serialization issues
+        Lineup lineup = repo.findByMatchIdWithDetails(matchId).orElseGet(Lineup::new);
 
         lineup.setMatchId(matchId);
         lineup.setFormationId(payload.getFormationId());
-        lineup.setCaptainPlayerId(payload.getCaptainPlayerId()); // nullable ok
+        lineup.setCaptainPlayerId(payload.getCaptainPlayerId());
 
         // ----------------------------
-        // Replace slots (same as before)
+        // Replace slots
         // ----------------------------
         lineup.getSlots().clear();
         for (LineupSlot s : payload.getSlots()) {
@@ -70,8 +73,7 @@ public class LineupController {
             slot.setCaptain(s.isCaptain());
             slot.setRating(s.getRating());
 
-            // ✅ Keep these for backwards compatibility if your frontend still sends them.
-            // They are NOT the source of truth anymore once you use playerStats.
+            // legacy fields (optional)
             slot.setGoals(s.getGoals());
             slot.setAssists(s.getAssists());
             slot.setYellowCards(s.getYellowCards());
@@ -81,38 +83,25 @@ public class LineupController {
         }
 
         // --------------------------------------------
-        // ✅ Option 1: Replace playerStats (by playerId)
+        // ✅ Player stats: update-in-place by playerId
+        // IMPORTANT: payload.getPlayerStats() might be Set now
         // --------------------------------------------
-        // If payload.playerStats exists, that becomes the source of truth.
-        // If it doesn't exist, we can optionally derive stats from slots (legacy).
-        lineup.getPlayerStats().clear();
+        Map<Long, LineupPlayerStat> existingByPlayerId = new HashMap<>();
+        for (LineupPlayerStat s : lineup.getPlayerStats()) {
+            if (s.getPlayerId() != null) existingByPlayerId.put(s.getPlayerId(), s);
+        }
 
-        if (payload.getPlayerStats() != null && !payload.getPlayerStats().isEmpty()) {
-            for (LineupPlayerStat ps : payload.getPlayerStats()) {
-                if (ps.getPlayerId() == null) {
-                    return ResponseEntity.badRequest().body("playerStats.playerId is required");
-                }
+        // ✅ Accept either Set or List from payload safely
+        Collection<LineupPlayerStat> incoming = payload.getPlayerStats();
 
-                LineupPlayerStat stat = new LineupPlayerStat();
-                stat.setLineup(lineup);
-                stat.setPlayerId(ps.getPlayerId());
-                stat.setGoals(ps.getGoals());
-                stat.setAssists(ps.getAssists());
-                stat.setYellowCards(ps.getYellowCards());
-                stat.setRedCards(ps.getRedCards());
-
-                lineup.getPlayerStats().add(stat);
-            }
-        } else {
-            // Legacy fallback: derive per-player stats from slots (only if present)
-            // This makes older payloads still persist into the new table.
-            Map<Long, LineupPlayerStat> byPlayer = new HashMap<>();
+        // If frontend hasn't sent playerStats yet, derive from slots (legacy fallback)
+        if (incoming == null || incoming.isEmpty()) {
+            Map<Long, LineupPlayerStat> derived = new HashMap<>();
             for (LineupSlot s : payload.getSlots()) {
                 if (s.getPlayerId() == null) continue;
 
-                LineupPlayerStat stat = byPlayer.computeIfAbsent(s.getPlayerId(), pid -> {
+                LineupPlayerStat stat = derived.computeIfAbsent(s.getPlayerId(), pid -> {
                     LineupPlayerStat x = new LineupPlayerStat();
-                    x.setLineup(lineup);
                     x.setPlayerId(pid);
                     x.setGoals(0);
                     x.setAssists(0);
@@ -121,13 +110,42 @@ public class LineupController {
                     return x;
                 });
 
-                stat.setGoals((stat.getGoals() == null ? 0 : stat.getGoals()) + n0(s.getGoals()));
-                stat.setAssists((stat.getAssists() == null ? 0 : stat.getAssists()) + n0(s.getAssists()));
-                stat.setYellowCards((stat.getYellowCards() == null ? 0 : stat.getYellowCards()) + n0(s.getYellowCards()));
-                stat.setRedCards((stat.getRedCards() == null ? 0 : stat.getRedCards()) + n0(s.getRedCards()));
+                stat.setGoals(n0(stat.getGoals()) + n0(s.getGoals()));
+                stat.setAssists(n0(stat.getAssists()) + n0(s.getAssists()));
+                stat.setYellowCards(n0(stat.getYellowCards()) + n0(s.getYellowCards()));
+                stat.setRedCards(n0(stat.getRedCards()) + n0(s.getRedCards()));
             }
-            lineup.getPlayerStats().addAll(byPlayer.values());
+            incoming = derived.values(); // collection
         }
+
+        // Track which playerIds we want to keep
+        Set<Long> keep = new HashSet<>();
+
+        for (LineupPlayerStat in : incoming) {
+            if (in.getPlayerId() == null) {
+                return ResponseEntity.badRequest().body("playerStats.playerId is required");
+            }
+
+            Long pid = in.getPlayerId();
+            keep.add(pid);
+
+            LineupPlayerStat target = existingByPlayerId.get(pid);
+            if (target == null) {
+                target = new LineupPlayerStat();
+                target.setLineup(lineup);
+                target.setPlayerId(pid);
+                lineup.getPlayerStats().add(target);
+                existingByPlayerId.put(pid, target);
+            }
+
+            target.setGoals(in.getGoals());
+            target.setAssists(in.getAssists());
+            target.setYellowCards(in.getYellowCards());
+            target.setRedCards(in.getRedCards());
+        }
+
+        // Remove stats not in incoming
+        lineup.getPlayerStats().removeIf(s -> s.getPlayerId() != null && !keep.contains(s.getPlayerId()));
 
         return ResponseEntity.ok(repo.save(lineup));
     }
@@ -137,7 +155,6 @@ public class LineupController {
     }
 
     // POST /api/lineups/summaries   { "ids": [1,2,3] }
-    // returns: [{ "matchId": 1, "formationId": 5 }, ...]
     @PostMapping("/summaries")
     public ResponseEntity<?> getSummaries(@RequestBody IdsRequest request) {
         if (request == null || request.ids == null) {

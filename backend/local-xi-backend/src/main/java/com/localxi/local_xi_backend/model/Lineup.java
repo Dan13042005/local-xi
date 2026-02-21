@@ -4,7 +4,9 @@ import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 @Entity
 @Table(name = "lineup")
@@ -23,15 +25,15 @@ public class Lineup {
     // captain player id (nullable ok)
     private Long captainPlayerId;
 
-    // ✅ Slots
-    @JsonManagedReference(value = "lineup-slots")
-    @OneToMany(mappedBy = "lineup", cascade = CascadeType.ALL, orphanRemoval = true)
+    // ✅ Slots (keep List)
+    @JsonManagedReference(value = "lineup")
+    @OneToMany(mappedBy = "lineup", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<LineupSlot> slots = new ArrayList<>();
 
-    // ✅ Player stats (separate table)
+    // ✅ Player stats (Set fixes MultipleBagFetchException)
     @JsonManagedReference(value = "lineup-stats")
-    @OneToMany(mappedBy = "lineup", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<LineupPlayerStat> playerStats = new ArrayList<>();
+    @OneToMany(mappedBy = "lineup", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    private Set<LineupPlayerStat> playerStats = new LinkedHashSet<>();
 
     public Lineup() {}
 
@@ -49,8 +51,8 @@ public class Lineup {
     public List<LineupSlot> getSlots() { return slots; }
     public void setSlots(List<LineupSlot> slots) { this.slots = slots; }
 
-    public List<LineupPlayerStat> getPlayerStats() { return playerStats; }
-    public void setPlayerStats(List<LineupPlayerStat> playerStats) { this.playerStats = playerStats; }
+    public Set<LineupPlayerStat> getPlayerStats() { return playerStats; }
+    public void setPlayerStats(Set<LineupPlayerStat> playerStats) { this.playerStats = playerStats; }
 }
 
 
