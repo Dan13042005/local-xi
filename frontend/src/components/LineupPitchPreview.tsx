@@ -1,6 +1,7 @@
 import type { Player } from "../models/Players";
 import type { Formation } from "../models/Formation";
 import type { LineupSlot } from "../models/Lineup";
+import type { RefObject } from "react";
 
 type RowKey = "ATT" | "AM" | "MID" | "DM" | "DEF" | "GK";
 type Lane = "L" | "C" | "R";
@@ -54,11 +55,11 @@ type Props = {
   onSlotClick?: (slotId: string) => void;
   selectedSlotId?: string | null;
 
-  // swap pitch-to-pitch
   onSwapSlots?: (fromSlotId: string, toSlotId: string) => void;
-
-  // ✅ NEW: drop bench player -> pitch slot
   onDropPlayerToSlot?: (slotId: string, playerId: number) => void;
+
+  /** ✅ NEW: the element we export (PNG/PDF) */
+  exportRef?: RefObject<HTMLDivElement | null>;
 };
 
 export function LineupPitchPreview({
@@ -69,6 +70,7 @@ export function LineupPitchPreview({
   selectedSlotId,
   onSwapSlots,
   onDropPlayerToSlot,
+  exportRef,
 }: Props) {
   const playerById = new Map(players.map((p) => [p.id, p]));
 
@@ -136,10 +138,14 @@ export function LineupPitchPreview({
     });
   });
 
+  // ✅ SHOW PLAYER NAME ON PITCH
   function labelFor(slot: LineupSlot) {
     if (slot.playerId == null) return slot.pos || "—";
+
     const p = playerById.get(slot.playerId);
-    return p ? `Player #${p.number}` : `Player #${slot.playerId}`;
+    if (!p) return `#${slot.playerId}`;
+
+    return `${p.name} (#${p.number})`; // name + number
   }
 
   function PlayerPill({ slot }: { slot: LineupSlot }) {
@@ -159,13 +165,12 @@ export function LineupPitchPreview({
         draggable={draggableEnabled}
         onDragStart={(e) => {
           if (!onSwapSlots) return;
-          // ✅ pitch-to-pitch drag data
           e.dataTransfer.setData("text/plain", `slot:${slot.slotId}`);
           e.dataTransfer.effectAllowed = "move";
         }}
         onDragOver={(e) => {
           if (!onSwapSlots && !onDropPlayerToSlot) return;
-          e.preventDefault(); // allow drop
+          e.preventDefault();
           e.dataTransfer.dropEffect = "move";
         }}
         onDrop={(e) => {
@@ -173,7 +178,6 @@ export function LineupPitchPreview({
           const data = e.dataTransfer.getData("text/plain") || "";
           const toSlotId = slot.slotId;
 
-          // ✅ if bench player dropped
           if (data.startsWith("player:")) {
             const idStr = data.replace("player:", "").trim();
             const playerId = Number(idStr);
@@ -182,7 +186,6 @@ export function LineupPitchPreview({
             return;
           }
 
-          // ✅ if pitch slot dropped
           if (data.startsWith("slot:")) {
             const fromSlotId = data.replace("slot:", "").trim();
             if (!fromSlotId || fromSlotId === toSlotId) return;
@@ -190,7 +193,6 @@ export function LineupPitchPreview({
             return;
           }
 
-          // fallback: old behavior (if someone drops raw slotId)
           if (data && data !== toSlotId) {
             onSwapSlots?.(data, toSlotId);
           }
@@ -248,21 +250,21 @@ export function LineupPitchPreview({
         </div>
 
         <div style={{ marginTop: 2, fontSize: 12, opacity: 0.8 }}>
-           {pos || "—"}
-           {r != null ? (
-             <>
+          {pos || "—"}
+          {r != null ? (
+            <>
               {" "}
               • ⭐ <span style={{ fontWeight: 700 }}>{r}</span>
-             </>
+            </>
           ) : null}
         </div>
 
         <div style={{ marginTop: 4, fontSize: 12, display: "flex", justifyContent: "center", gap: 10 }}>
-           {((slot.goals ?? 0) > 0) && <span title="Goals">⚽ {slot.goals}</span>}
-          {((slot.assists ?? 0) > 0) && <span title="Assists">🅰️ {slot.assists}</span>}
-          {((slot.yellowCards ?? 0) > 0) && <span title="Yellow cards">🟨 {slot.yellowCards}</span>}
-          {((slot.redCards ?? 0) > 0) && <span title="Red cards">🟥 {slot.redCards}</span>}
-</div>
+          {(slot.goals ?? 0) > 0 && <span title="Goals">⚽ {slot.goals}</span>}
+          {(slot.assists ?? 0) > 0 && <span title="Assists">🅰️ {slot.assists}</span>}
+          {(slot.yellowCards ?? 0) > 0 && <span title="Yellow cards">🟨 {slot.yellowCards}</span>}
+          {(slot.redCards ?? 0) > 0 && <span title="Red cards">🟥 {slot.redCards}</span>}
+        </div>
       </button>
     );
   }
@@ -271,7 +273,9 @@ export function LineupPitchPreview({
     <div style={{ marginTop: 14 }}>
       <div style={{ fontWeight: 800, marginBottom: 10 }}>Pitch preview</div>
 
+      {/* ✅ THIS is what we export */}
       <div
+        ref={exportRef}
         style={{
           position: "relative",
           width: "100%",
@@ -331,15 +335,3 @@ export function LineupPitchPreview({
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-

@@ -3,7 +3,7 @@ import type { Match } from "../models/Match";
 import { createMatch, deleteMatches, getMatches, updateMatch } from "../api/matchesAPI";
 import { LineupEditor } from "../components/LineupEditor";
 
-// ✅ NEW: formations + lineup summaries
+// ✅ formations + lineup summaries
 import type { Formation } from "../models/Formation";
 import { getFormations } from "../api/formationsAPI";
 import { getLineupSummaries } from "../api/lineupsAPI";
@@ -59,7 +59,7 @@ export function MatchesPage() {
   const [query, setQuery] = useState<string>("");
   const [venueFilter, setVenueFilter] = useState<VenueFilter>("all");
 
-  // ✅ NEW: formations + lineup summaries (matchId -> formationId)
+  // ✅ formations + lineup summaries (matchId -> formationId)
   const [formations, setFormations] = useState<Formation[]>([]);
   const [lineupByMatchId, setLineupByMatchId] = useState<Record<number, number>>({});
 
@@ -111,7 +111,7 @@ export function MatchesPage() {
         setLineupMatchId(null);
       }
 
-      // ✅ NEW: load lineup summaries for these matches (matchId -> formationId)
+      // ✅ load lineup summaries for these matches (matchId -> formationId)
       const ids = sorted.map((m) => m.id);
       if (ids.length === 0) {
         setLineupByMatchId({});
@@ -238,46 +238,6 @@ export function MatchesPage() {
     return `${m.goalsFor}–${m.goalsAgainst}`;
   }
 
-  // ---------- stats helpers ----------
-  function computeStats(list: Match[]) {
-    const played = list.length;
-
-    let wins = 0;
-    let draws = 0;
-    let losses = 0;
-    let gf = 0;
-    let ga = 0;
-
-    for (const m of list) {
-      const gFor = m.goalsFor ?? 0;
-      const gAgainst = m.goalsAgainst ?? 0;
-
-      gf += gFor;
-      ga += gAgainst;
-
-      if (gFor > gAgainst) wins++;
-      else if (gFor === gAgainst) draws++;
-      else losses++;
-    }
-
-    const gd = gf - ga;
-    const points = wins * 3 + draws;
-
-    return { played, wins, draws, losses, gf, ga, gd, points };
-  }
-
-  function resultLabel(m: Match): "W" | "D" | "L" | "—" {
-    if (m.goalsFor == null || m.goalsAgainst == null) return "—";
-    if (m.goalsFor > m.goalsAgainst) return "W";
-    if (m.goalsFor === m.goalsAgainst) return "D";
-    return "L";
-  }
-
-  function venueLabel(m: Match) {
-    return m.home ? "H" : "A";
-  }
-  // -----------------------------
-
   // filter first
   const filteredMatches = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -288,8 +248,7 @@ export function MatchesPage() {
 
       if (q.length === 0) return true;
 
-      const score =
-        m.goalsFor != null && m.goalsAgainst != null ? `${m.goalsFor}-${m.goalsAgainst}` : "";
+      const score = m.goalsFor != null && m.goalsAgainst != null ? `${m.goalsFor}-${m.goalsAgainst}` : "";
       const haystack = `${m.opponent} ${m.date} ${score}`.toLowerCase();
 
       return haystack.includes(q);
@@ -307,9 +266,6 @@ export function MatchesPage() {
       .filter((m) => m.goalsFor != null && m.goalsAgainst != null)
       .sort((a, b) => b.date.localeCompare(a.date)); // newest first
   }, [filteredMatches]);
-
-  const seasonStats = useMemo(() => computeStats(results), [results]);
-  const recentForm = useMemo(() => results.slice(0, 5), [results]);
 
   // ---------- inline edit helpers ----------
   function startEdit(m: Match) {
@@ -416,7 +372,7 @@ export function MatchesPage() {
             <th>H/A</th>
             <th>Result</th>
 
-            {/* ✅ NEW */}
+            {/* ✅ Formation from lineup summary */}
             <th>Formation</th>
 
             <th style={{ width: 140 }}>Lineup</th>
@@ -445,9 +401,7 @@ export function MatchesPage() {
                     <input
                       type="date"
                       value={d!.date}
-                      onChange={(e) =>
-                        setDraft((prev) => (prev ? { ...prev, date: e.target.value } : prev))
-                      }
+                      onChange={(e) => setDraft((prev) => (prev ? { ...prev, date: e.target.value } : prev))}
                     />
                   ) : (
                     m.date
@@ -472,16 +426,14 @@ export function MatchesPage() {
                     <select
                       value={d!.home ? "home" : "away"}
                       onChange={(e) =>
-                        setDraft((prev) =>
-                          prev ? { ...prev, home: e.target.value === "home" } : prev
-                        )
+                        setDraft((prev) => (prev ? { ...prev, home: e.target.value === "home" } : prev))
                       }
                     >
                       <option value="home">H</option>
                       <option value="away">A</option>
                     </select>
                   ) : (
-                    m.home ? "H" : "A"
+                    (m.home ? "H" : "A")
                   )}
                 </td>
 
@@ -506,9 +458,7 @@ export function MatchesPage() {
                         step={1}
                         value={d!.goalsAgainst}
                         onChange={(e) =>
-                          setDraft((prev) =>
-                            prev ? { ...prev, goalsAgainst: e.target.value } : prev
-                          )
+                          setDraft((prev) => (prev ? { ...prev, goalsAgainst: e.target.value } : prev))
                         }
                         placeholder="GA"
                         style={{ width: 70 }}
@@ -519,7 +469,6 @@ export function MatchesPage() {
                   )}
                 </td>
 
-                {/* ✅ NEW */}
                 <td>{formationLabel(m.id)}</td>
 
                 <td>
@@ -531,12 +480,7 @@ export function MatchesPage() {
                 <td>
                   {editing ? (
                     <div style={{ display: "flex", gap: 8 }}>
-                      <button
-                        type="button"
-                        className="primary"
-                        onClick={() => saveEdit(m.id)}
-                        disabled={saving}
-                      >
+                      <button type="button" className="primary" onClick={() => saveEdit(m.id)} disabled={saving}>
                         {saving ? "Saving..." : "Save"}
                       </button>
                       <button type="button" onClick={cancelEdit} disabled={saving}>
@@ -574,11 +518,7 @@ export function MatchesPage() {
 
           <label>
             Opponent
-            <input
-              value={opponent}
-              onChange={(e) => setOpponent(e.target.value)}
-              placeholder="e.g. Riverside FC"
-            />
+            <input value={opponent} onChange={(e) => setOpponent(e.target.value)} placeholder="e.g. Riverside FC" />
           </label>
 
           <label>
@@ -663,45 +603,6 @@ export function MatchesPage() {
         </div>
       </div>
 
-      {/* Season Summary + Recent Form (filtered) */}
-      <h3 style={{ marginTop: "1rem" }}>Season Summary</h3>
-      {results.length === 0 ? (
-        <p>No results yet — add scores to fixtures to generate stats.</p>
-      ) : (
-        <div className="card" style={{ padding: "12px 14px", marginTop: 8 }}>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 14 }}>
-            <div><strong>Played:</strong> {seasonStats.played}</div>
-            <div><strong>W:</strong> {seasonStats.wins}</div>
-            <div><strong>D:</strong> {seasonStats.draws}</div>
-            <div><strong>L:</strong> {seasonStats.losses}</div>
-            <div><strong>GF:</strong> {seasonStats.gf}</div>
-            <div><strong>GA:</strong> {seasonStats.ga}</div>
-            <div><strong>GD:</strong> {seasonStats.gd}</div>
-            <div><strong>Points:</strong> {seasonStats.points}</div>
-          </div>
-
-          <div style={{ marginTop: 10 }}>
-            <strong>Recent form (last {recentForm.length}):</strong>{" "}
-            {recentForm.map((m) => (
-              <span
-                key={m.id}
-                style={{
-                  display: "inline-block",
-                  padding: "2px 8px",
-                  borderRadius: 999,
-                  border: "1px solid rgba(0,0,0,0.15)",
-                  marginLeft: 6,
-                  fontSize: 13,
-                }}
-                title={`${m.date} vs ${m.opponent} (${venueLabel(m)}) ${formatResult(m)}`}
-              >
-                {resultLabel(m)}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* ✅ Lineup editor renders here */}
       {lineupMatchId != null ? (
         <LineupEditor matchId={lineupMatchId} onClose={closeLineup} onSaved={refreshMatches} />
@@ -715,7 +616,6 @@ export function MatchesPage() {
     </section>
   );
 }
-
 
 
 

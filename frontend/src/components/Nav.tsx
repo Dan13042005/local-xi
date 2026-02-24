@@ -1,4 +1,4 @@
-type NavKey = "notices" | "players" | "matches" | "formations";
+type NavKey = "notices" | "players" | "matches" | "formations" | "analytics";
 
 type NavProps = {
   active: NavKey;
@@ -11,6 +11,7 @@ export function Nav({ active, onChange }: NavProps) {
     { key: "players", label: "Players" },
     { key: "matches", label: "Matches" },
     { key: "formations", label: "Formations" },
+    { key: "analytics", label: "Analytics" }, // ✅ NEW
   ];
 
   return (
