@@ -8,6 +8,8 @@ import type { Formation } from "../models/Formation";
 import { getFormations } from "../api/formationsAPI";
 import { getLineupSummaries } from "../api/lineupsAPI";
 
+import { GameSummary } from "../components/GameSummary";
+
 type ParsedNumber = {
   value: number | null; // null means blank
   valid: boolean; // false means invalid input
@@ -445,9 +447,7 @@ export function MatchesPage() {
                         min={0}
                         step={1}
                         value={d!.goalsFor}
-                        onChange={(e) =>
-                          setDraft((prev) => (prev ? { ...prev, goalsFor: e.target.value } : prev))
-                        }
+                        onChange={(e) => setDraft((prev) => (prev ? { ...prev, goalsFor: e.target.value } : prev))}
                         placeholder="GF"
                         style={{ width: 70 }}
                       />
@@ -559,12 +559,7 @@ export function MatchesPage() {
 
           {!canSubmit && !error && submitHint ? <p className="error">{submitHint}</p> : null}
 
-          <button
-            type="button"
-            className="danger"
-            onClick={handleDeleteSelected}
-            disabled={selectedIds.length === 0 || saving}
-          >
+          <button type="button" className="danger" onClick={handleDeleteSelected} disabled={selectedIds.length === 0 || saving}>
             Delete Selected ({selectedIds.length})
           </button>
         </div>
@@ -603,9 +598,12 @@ export function MatchesPage() {
         </div>
       </div>
 
-      {/* ✅ Lineup editor renders here */}
+      {/* ✅ Lineup editor + Game summary for the opened match */}
       {lineupMatchId != null ? (
-        <LineupEditor matchId={lineupMatchId} onClose={closeLineup} onSaved={refreshMatches} />
+        <>
+          <LineupEditor matchId={lineupMatchId} onClose={closeLineup} onSaved={refreshMatches} />
+          <GameSummary matchId={lineupMatchId} />
+        </>
       ) : null}
 
       <h3 style={{ marginTop: "1rem" }}>Upcoming Fixtures</h3>

@@ -188,15 +188,3 @@ public class LineupController {
     }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
