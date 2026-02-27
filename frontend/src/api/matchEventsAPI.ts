@@ -32,3 +32,13 @@ export async function saveMatchEventsForMatch(matchId: number, events: MatchEven
   if (!res.ok) throw new Error(await asTextOrJsonError(res));
   return (await res.json()) as MatchEvent[];
 }
+
+// POST recompute match score from events (A)
+export async function recomputeMatchFromEvents(matchId: number): Promise<void> {
+  const res = await fetch(`${BASE_URL}/api/match-events/match/${matchId}/recompute`, {
+    method: "POST",
+    headers: { Accept: "application/json" },
+  });
+
+  if (!res.ok) throw new Error(await asTextOrJsonError(res));
+}

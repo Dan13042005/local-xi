@@ -51,7 +51,7 @@ public class MatchController {
     public static class MatchPatch {
         public LocalDate date;          // must be "YYYY-MM-DD" if sent
         public String opponent;
-        public Boolean home;            // Boolean (nullable) so omitted doesn’t become false
+        public Boolean home;            // nullable so omitted doesn’t become false
         public Integer goalsFor;         // nullable allowed
         public Integer goalsAgainst;     // nullable allowed
     }
@@ -60,14 +60,14 @@ public class MatchController {
     public ResponseEntity<?> updateMatch(@PathVariable Long id, @RequestBody MatchPatch patch) {
         return repo.findById(id)
                 .map(existing -> {
-                    // apply patch fields only if provided
                     if (patch.date != null) existing.setDate(patch.date);
                     if (patch.opponent != null) existing.setOpponent(patch.opponent);
                     if (patch.home != null) existing.setHome(patch.home);
-                    if (patch.goalsFor != null || patch.goalsFor == null) existing.setGoalsFor(patch.goalsFor);
-                    if (patch.goalsAgainst != null || patch.goalsAgainst == null) existing.setGoalsAgainst(patch.goalsAgainst);
 
-                    // validate final state
+                    // allow nulls (blank score)
+                    existing.setGoalsFor(patch.goalsFor);
+                    existing.setGoalsAgainst(patch.goalsAgainst);
+
                     if (existing.getDate() == null) {
                         return ResponseEntity.badRequest().body("Date is required");
                     }
@@ -87,17 +87,17 @@ public class MatchController {
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
+    public static class IdsRequest {
+        public List<Long> ids;
+    }
+
     @PostMapping("/bulk-delete")
     public ResponseEntity<?> bulkDelete(@RequestBody IdsRequest request) {
-        if (request.ids == null || request.ids.isEmpty()) {
+        if (request == null || request.ids == null || request.ids.isEmpty()) {
             return ResponseEntity.badRequest().body("No ids provided");
         }
         repo.deleteAllById(request.ids);
         return ResponseEntity.ok().build();
-    }
-
-    public static class IdsRequest {
-        public List<Long> ids;
     }
 }
 

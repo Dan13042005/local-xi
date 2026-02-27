@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Player } from "../models/Players";
 import type { MatchEvent, MatchEventType } from "../models/MatchEvent";
 import { getPlayers } from "../api/playersAPI";
-import { getMatchEventsForMatch, saveMatchEventsForMatch } from "../api/matchEventsAPI";
+import { getMatchEventsForMatch, saveMatchEventsForMatch, recomputeMatchFromEvents } from "../api/matchEventsAPI";
 
 type Props = {
   matchId: number;
@@ -11,7 +11,6 @@ type Props = {
 type LocalEvent = MatchEvent & { _key: string };
 
 function makeKey() {
-  // good enough for UI keys
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
@@ -28,7 +27,6 @@ function validateEvent(e: MatchEvent): string {
 
   if (e.type === "GOAL") {
     if (e.playerId == null) return "GOAL requires a scorer (player).";
-    // relatedPlayerId = assist (optional)
     return "";
   }
 
@@ -90,9 +88,9 @@ export function GameSummary({ matchId }: Props) {
   function addEvent(type: MatchEventType) {
     setError("");
     const pid = firstPlayerIdOrNull();
+
     const blank: LocalEvent = {
       _key: makeKey(),
-      // id optional (backend returns it), we omit it for new
       matchId,
       minute: 0,
       type,
@@ -101,7 +99,6 @@ export function GameSummary({ matchId }: Props) {
       note: null,
     };
 
-    // for SUB default OFF to a different player if possible
     if (type === "SUB" && players.length >= 2) {
       blank.playerId = players[0].id;
       blank.relatedPlayerId = players[1].id;
@@ -121,7 +118,6 @@ export function GameSummary({ matchId }: Props) {
   async function saveAll() {
     setError("");
 
-    // validate all
     for (const e of events) {
       const msg = validateEvent(e);
       if (msg) {
@@ -132,15 +128,19 @@ export function GameSummary({ matchId }: Props) {
 
     setSaving(true);
     try {
-      // send payload WITHOUT UI-only _key; id is ok to include but backend ignores (you said id optional/ignored)
       const payload: MatchEvent[] = events.map(({ _key, ...rest }) => ({
         ...rest,
-        // ensure matchId is not relied on (backend sets it), but harmless to include
         matchId,
       }));
 
+      // 1) save events
       await saveMatchEventsForMatch(matchId, payload);
-      await load(); // reload to get ids + normalized ordering
+
+      // 2) A) recompute Match.goalsFor from GOAL events
+      await recomputeMatchFromEvents(matchId);
+
+      // 3) reload events (ids/order)
+      await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save match events.");
     } finally {
@@ -175,11 +175,8 @@ export function GameSummary({ matchId }: Props) {
         </div>
       </div>
 
-      {error ? (
-        <div style={{ marginTop: 10, color: "crimson", fontWeight: 700 }}>{error}</div>
-      ) : null}
+      {error ? <div style={{ marginTop: 10, color: "crimson", fontWeight: 700 }}>{error}</div> : null}
 
-      {/* Add buttons */}
       <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
         <button type="button" onClick={() => addEvent("GOAL")} disabled={saving || players.length === 0}>
           + Goal
@@ -201,7 +198,6 @@ export function GameSummary({ matchId }: Props) {
         </div>
       ) : null}
 
-      {/* Editable list */}
       {sorted.length === 0 ? (
         <div style={{ marginTop: 12, opacity: 0.8 }}>
           No events recorded yet (subs, goals, assists, cards). Use the buttons above to add some.
@@ -210,12 +206,10 @@ export function GameSummary({ matchId }: Props) {
         <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
           {sorted.map((e, idx) => {
             const minuteLabel = `${e.minute}'`;
-
             const isGoal = e.type === "GOAL";
             const isCard = e.type === "YELLOW" || e.type === "RED";
             const isSub = e.type === "SUB";
 
-            // friendly read-only preview text (matches your earlier UI)
             let preview = "";
             if (isGoal) {
               const scorer = playerLabel(playerById, e.playerId ?? null);
@@ -252,7 +246,6 @@ export function GameSummary({ matchId }: Props) {
                   </button>
                 </div>
 
-                {/* Editor row */}
                 <div
                   style={{
                     marginTop: 10,
@@ -283,26 +276,14 @@ export function GameSummary({ matchId }: Props) {
                       onChange={(ev) => {
                         const nextType = ev.target.value as MatchEventType;
 
-                        // reset related fields sensibly when type changes
                         if (nextType === "GOAL") {
-                          updateEvent(e._key, {
-                            type: nextType,
-                            relatedPlayerId: null, // assist optional
-                          });
+                          updateEvent(e._key, { type: nextType, relatedPlayerId: null });
                         } else if (nextType === "YELLOW" || nextType === "RED") {
-                          updateEvent(e._key, {
-                            type: nextType,
-                            relatedPlayerId: null,
-                          });
+                          updateEvent(e._key, { type: nextType, relatedPlayerId: null });
                         } else {
-                          // SUB
                           const pid = firstPlayerIdOrNull();
                           const off = players.length >= 2 ? players[1].id : pid;
-                          updateEvent(e._key, {
-                            type: nextType,
-                            playerId: pid,
-                            relatedPlayerId: off,
-                          });
+                          updateEvent(e._key, { type: nextType, playerId: pid, relatedPlayerId: off });
                         }
                       }}
                       disabled={saving}
@@ -319,7 +300,9 @@ export function GameSummary({ matchId }: Props) {
                     {isSub ? "Sub ON" : isGoal ? "Scorer" : "Player"}
                     <select
                       value={e.playerId ?? ""}
-                      onChange={(ev) => updateEvent(e._key, { playerId: ev.target.value ? Number(ev.target.value) : null })}
+                      onChange={(ev) =>
+                        updateEvent(e._key, { playerId: ev.target.value ? Number(ev.target.value) : null })
+                      }
                       disabled={saving}
                       style={{ width: "100%" }}
                     >
@@ -340,9 +323,7 @@ export function GameSummary({ matchId }: Props) {
                     <select
                       value={e.relatedPlayerId ?? ""}
                       onChange={(ev) =>
-                        updateEvent(e._key, {
-                          relatedPlayerId: ev.target.value ? Number(ev.target.value) : null,
-                        })
+                        updateEvent(e._key, { relatedPlayerId: ev.target.value ? Number(ev.target.value) : null })
                       }
                       disabled={saving || isCard}
                       style={{ width: "100%" }}
@@ -371,15 +352,10 @@ export function GameSummary({ matchId }: Props) {
                   </label>
                 </div>
 
-                {/* quick inline warning per row (optional) */}
                 {(() => {
                   const msg = validateEvent(e);
                   if (!msg) return null;
-                  return (
-                    <div style={{ marginTop: 8, color: "crimson", fontWeight: 700, fontSize: 13 }}>
-                      {msg}
-                    </div>
-                  );
+                  return <div style={{ marginTop: 8, color: "crimson", fontWeight: 700, fontSize: 13 }}>{msg}</div>;
                 })()}
               </div>
             );
