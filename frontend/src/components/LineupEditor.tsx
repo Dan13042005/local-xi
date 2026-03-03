@@ -163,7 +163,10 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
     });
   }, [slots, playerStatsById]);
 
+  // ✅ IMPORTANT: do NOT let lineup fetch failure stop formations loading
   useEffect(() => {
+    let cancelled = false;
+
     (async () => {
       setLoading(true);
       setError("");
@@ -171,24 +174,44 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
       setSelectedBenchPlayerId(null);
 
       try {
-        const [ps, fs, existing] = await Promise.all([
+        const [psRes, fsRes, existingRes] = await Promise.allSettled([
           getPlayers(),
           getFormations(),
           getLineupForMatch(matchId),
         ]);
 
-        setPlayers([...ps].sort((a, b) => a.number - b.number));
+        // players
+        const ps = psRes.status === "fulfilled" ? psRes.value : [];
+        if (!cancelled) setPlayers([...ps].sort((a, b) => a.number - b.number));
+
+        // formations (must always be set if API works)
+        const fs = fsRes.status === "fulfilled" ? fsRes.value : [];
         const sortedFormations = [...fs].sort((a, b) => a.name.localeCompare(b.name));
-        setFormations(sortedFormations);
+        if (!cancelled) setFormations(sortedFormations);
+
+        // lineup (optional)
+        let existing: any = null;
+        if (existingRes.status === "fulfilled") {
+          existing = existingRes.value;
+        } else {
+          const msg =
+            existingRes.reason instanceof Error ? existingRes.reason.message : String(existingRes.reason);
+
+          // ignore "no lineup yet" style errors
+          const looksLike404 = msg.includes("404") || msg.toLowerCase().includes("not found");
+          if (!looksLike404) {
+            if (!cancelled) setError(msg || "Failed to load existing lineup.");
+          }
+        }
 
         const initialFormationId = existing?.formationId ?? sortedFormations[0]?.id ?? null;
-        setFormationId(initialFormationId);
+        if (!cancelled) setFormationId(initialFormationId);
 
         if (initialFormationId != null) {
           const f = sortedFormations.find((x) => x.id === initialFormationId) ?? null;
-          setSlots(f ? mergeSlots(f, existing?.slots) : []);
+          if (!cancelled) setSlots(f ? mergeSlots(f, existing?.slots) : []);
         } else {
-          setSlots([]);
+          if (!cancelled) setSlots([]);
         }
 
         const loadedStats =
@@ -196,13 +219,17 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
             ? fromPlayerStatsArray(existing.playerStats)
             : fromSlotsLegacy(existing?.slots as any);
 
-        setPlayerStatsById(loadedStats);
+        if (!cancelled) setPlayerStatsById(loadedStats);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to load lineup data.");
+        if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load lineup data.");
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [matchId]);
 
   function changeFormation(nextId: number) {
@@ -274,7 +301,9 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
     setError("");
 
     if (selectedBenchPlayerId != null) {
-      setSlots((prev) => prev.map((s) => (s.slotId === clickedSlotId ? { ...s, playerId: selectedBenchPlayerId } : s)));
+      setSlots((prev) =>
+        prev.map((s) => (s.slotId === clickedSlotId ? { ...s, playerId: selectedBenchPlayerId } : s))
+      );
       setSelectedBenchPlayerId(null);
       setSelectedSlotId(null);
       return;
@@ -444,7 +473,8 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
         <div>
           <strong>Lineup for match #{matchId}</strong>
           <div style={{ opacity: 0.8, fontSize: 13, marginTop: 4 }}>
-            Bench click → pitch click assigns. Pitch click → pitch click swaps. Drag bench player onto a pitch pill to assign. Drag pitch pill onto another to swap.
+            Bench click → pitch click assigns. Pitch click → pitch click swaps. Drag bench player onto a pitch pill to
+            assign. Drag pitch pill onto another to swap.
           </div>
         </div>
 
@@ -559,7 +589,8 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
                   }}
                 >
                   <div style={{ fontWeight: 700 }}>
-                    {slotMeta.position} <span style={{ opacity: 0.6, fontWeight: 400 }}>({slotMeta.slotId})</span>
+                    {slotMeta.position}{" "}
+                    <span style={{ opacity: 0.6, fontWeight: 400 }}>({slotMeta.slotId})</span>
                   </div>
 
                   <select

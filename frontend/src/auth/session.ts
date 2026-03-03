@@ -1,6 +1,7 @@
 // src/auth/session.ts
 const TOKEN_KEY = "token";
 const ROLE_KEY = "role";
+const FLASH_KEY = "auth_flash";
 
 type JwtPayload = {
   exp?: number; // seconds since epoch
@@ -29,6 +30,10 @@ export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
 }
 
+export function getRole(): string | null {
+  return localStorage.getItem(ROLE_KEY);
+}
+
 export function setToken(token: string, role?: string) {
   localStorage.setItem(TOKEN_KEY, token);
   if (role) localStorage.setItem(ROLE_KEY, role);
@@ -45,6 +50,16 @@ export function clearSession() {
     window.clearTimeout(logoutTimer);
     logoutTimer = null;
   }
+}
+
+export function setAuthFlash(message: string) {
+  sessionStorage.setItem(FLASH_KEY, message);
+}
+
+export function consumeAuthFlash(): string | null {
+  const msg = sessionStorage.getItem(FLASH_KEY);
+  if (msg) sessionStorage.removeItem(FLASH_KEY);
+  return msg;
 }
 
 export function isExpired(token: string): boolean {
@@ -75,6 +90,7 @@ export function scheduleAutoLogout(token?: string | null) {
   const msUntilLogout = Math.max(0, expMs - nowMs - 5000);
 
   logoutTimer = window.setTimeout(() => {
+    setAuthFlash("Session expired. Please sign in again.");
     clearSession();
     window.location.href = "/login";
   }, msUntilLogout);

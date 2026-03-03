@@ -1,33 +1,23 @@
+// src/pages/LoginPage.tsx
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { setToken } from "../auth/session";
+import { setToken, consumeAuthFlash } from "../auth/session";
 
-const BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080") as string;
+const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080";
 
 type Props = {
   onLoggedIn?: () => void;
 };
 
-type LoginResponse = {
-  token: string;
-  role: "MANAGER" | "PLAYER";
-  teamId: number;
-  email: string;
-  userId: number;
-};
-
 export default function LoginPage({ onLoggedIn }: Props) {
-  const nav = useNavigate();
-
   const [email, setEmail] = useState("manager@demofc.com");
   const [password, setPassword] = useState("manager123");
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(consumeAuthFlash());
+  const [loading, setLoading] = useState(false);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    setBusy(true);
+    setLoading(true);
 
     try {
       const res = await fetch(`${BASE_URL}/api/auth/login`, {
@@ -41,17 +31,16 @@ export default function LoginPage({ onLoggedIn }: Props) {
         return;
       }
 
-      const data = (await res.json()) as LoginResponse;
+      const data: { token: string; role: string } = await res.json();
 
-      // store token + role (+ exp if JWT has it)
+      // ✅ Store token + role together (cleaner)
       setToken(data.token, data.role);
 
       onLoggedIn?.();
-      nav("/", { replace: true });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Login failed.");
+      setError(e instanceof Error ? e.message : "Login failed");
     } finally {
-      setBusy(false);
+      setLoading(false);
     }
   }
 
@@ -81,10 +70,18 @@ export default function LoginPage({ onLoggedIn }: Props) {
           />
         </div>
 
-        {error && <div style={{ color: "crimson", marginBottom: 12 }}>{error}</div>}
+        {error && (
+          <div style={{ color: "crimson", marginBottom: 12 }}>
+            {error}
+          </div>
+        )}
 
-        <button type="submit" style={{ width: "100%", padding: 10 }} disabled={busy}>
-          {busy ? "Logging in..." : "Login"}
+        <button
+          type="submit"
+          style={{ width: "100%", padding: 10 }}
+          disabled={loading}
+        >
+          {loading ? "Logging in..." : "Login"}
         </button>
       </form>
     </div>
