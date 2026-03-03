@@ -38,6 +38,10 @@ export function PlayersPage() {
   const [totalsById, setTotalsById] = useState<Record<number, PlayerTotals>>({});
   const [totalsLoadingById, setTotalsLoadingById] = useState<Record<number, boolean>>({});
 
+  // ✅ role gate (PLAYER = read-only, MANAGER = edit)
+  const role = localStorage.getItem("role");
+  const isManager = role === "MANAGER";
+
   async function refreshPlayers() {
     try {
       const data = await getPlayers();
@@ -154,9 +158,7 @@ export function PlayersPage() {
   }, [players]);
 
   function toggleSelected(id: number) {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }
 
   function toggleSelectAll(checked: boolean) {
@@ -261,70 +263,72 @@ export function PlayersPage() {
     <section>
       <h2>Players</h2>
 
-      <form className="card" onSubmit={addPlayer}>
-        <div className="form-row">
-          <label>
-            Name
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Dan Smith"
-            />
-          </label>
+      {isManager ? (
+        <form className="card" onSubmit={addPlayer}>
+          <div className="form-row">
+            <label>
+              Name
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. Dan Smith"
+              />
+            </label>
 
-          <label>
-            Positions
-            <div className="checkbox-grid">
-              {POSITIONS.map((pos) => (
-                <label key={pos} className="checkbox-item">
-                  <input
-                    type="checkbox"
-                    checked={selectedPositions.includes(pos)}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setSelectedPositions((prev) => [...prev, pos]);
-                      } else {
-                        setSelectedPositions((prev) => prev.filter((p) => p !== pos));
-                      }
-                    }}
-                  />
-                  <span>{pos}</span>
-                </label>
-              ))}
-            </div>
-          </label>
+            <label>
+              Positions
+              <div className="checkbox-grid">
+                {POSITIONS.map((pos) => (
+                  <label key={pos} className="checkbox-item">
+                    <input
+                      type="checkbox"
+                      checked={selectedPositions.includes(pos)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedPositions((prev) => [...prev, pos]);
+                        } else {
+                          setSelectedPositions((prev) => prev.filter((p) => p !== pos));
+                        }
+                      }}
+                    />
+                    <span>{pos}</span>
+                  </label>
+                ))}
+              </div>
+            </label>
 
-          <label>
-            Shirt No.
-            <input
-              type="number"
-              value={number}
-              onChange={(e) => setNumber(Number(e.target.value))}
-              min={1}
-              max={99}
-            />
-          </label>
+            <label>
+              Shirt No.
+              <input
+                type="number"
+                value={number}
+                onChange={(e) => setNumber(Number(e.target.value))}
+                min={1}
+                max={99}
+              />
+            </label>
 
-          <button type="submit" className="primary" disabled={!canSubmit}>
-            Add Player
-          </button>
+            <button type="submit" className="primary" disabled={!canSubmit}>
+              Add Player
+            </button>
 
-          {!canSubmit && !error && submitHint ? <p className="error">{submitHint}</p> : null}
+            {!canSubmit && !error && submitHint ? <p className="error">{submitHint}</p> : null}
 
-          <button
-            type="button"
-            className="danger"
-            onClick={handleDeleteSelected}
-            disabled={selectedIds.length === 0}
-          >
-            Delete Selected ({selectedIds.length})
-          </button>
-        </div>
+            <button
+              type="button"
+              className="danger"
+              onClick={handleDeleteSelected}
+              disabled={selectedIds.length === 0}
+            >
+              Delete Selected ({selectedIds.length})
+            </button>
+          </div>
 
-        {error ? <p className="error">{error}</p> : null}
-      </form>
+          {error ? <p className="error">{error}</p> : null}
+        </form>
+      ) : null}
 
-      {/* ✅ Manual refresh for totals */}
+      {/* ✅ Manual refresh for totals (read-only friendly) */}
       <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
         <button type="button" onClick={refreshTotals}>
           Refresh Totals
@@ -334,13 +338,15 @@ export function PlayersPage() {
       <table>
         <thead>
           <tr>
-            <th>
-              <input
-                type="checkbox"
-                checked={allSelected}
-                onChange={(e) => toggleSelectAll(e.target.checked)}
-              />
-            </th>
+            {isManager ? (
+              <th>
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={(e) => toggleSelectAll(e.target.checked)}
+                />
+              </th>
+            ) : null}
             <th>No.</th>
             <th>Name</th>
             <th>Positions</th>
@@ -351,13 +357,15 @@ export function PlayersPage() {
         <tbody>
           {players.map((player) => (
             <tr key={player.id}>
-              <td>
-                <input
-                  type="checkbox"
-                  checked={selectedIds.includes(player.id)}
-                  onChange={() => toggleSelected(player.id)}
-                />
-              </td>
+              {isManager ? (
+                <td>
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.includes(player.id)}
+                    onChange={() => toggleSelected(player.id)}
+                  />
+                </td>
+              ) : null}
               <td>{player.number}</td>
               <td>{player.name}</td>
               <td>{player.positions.join(", ")}</td>

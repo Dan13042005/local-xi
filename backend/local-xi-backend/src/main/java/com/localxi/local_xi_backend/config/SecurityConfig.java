@@ -27,12 +27,16 @@ public class SecurityConfig {
             .cors(Customizer.withDefaults())
             .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/auth/login").permitAll()
+                // allow preflight
+                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
-                // Everyone logged in can read
+                // allow all auth endpoints
+                .requestMatchers("/api/auth/**").permitAll()
+
+                // read access for logged-in users
                 .requestMatchers(HttpMethod.GET, "/api/**").hasAnyRole("PLAYER", "MANAGER")
 
-                // Only managers can write
+                // write access only for managers
                 .requestMatchers(HttpMethod.POST, "/api/**").hasRole("MANAGER")
                 .requestMatchers(HttpMethod.PUT, "/api/**").hasRole("MANAGER")
                 .requestMatchers(HttpMethod.DELETE, "/api/**").hasRole("MANAGER")

@@ -82,6 +82,10 @@ export function FormationsPage() {
   const [slotDraft, setSlotDraft] = useState<Record<number, string>>({});
   const [saving, setSaving] = useState(false);
 
+  // ✅ role gate (PLAYER = read-only, MANAGER = edit)
+  const role = localStorage.getItem("role");
+  const isManager = role === "MANAGER";
+
   async function refresh() {
     setError("");
     try {
@@ -90,9 +94,7 @@ export function FormationsPage() {
       setFormations(sorted);
 
       const ids = new Set(sorted.map((f) => f.id));
-      setSelectedId((prev) =>
-        prev != null && ids.has(prev) ? prev : sorted[0]?.id ?? null
-      );
+      setSelectedId((prev) => (prev != null && ids.has(prev) ? prev : sorted[0]?.id ?? null));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load formations.");
     }
@@ -138,6 +140,10 @@ export function FormationsPage() {
   }, [selected]);
 
   function startEditSlots() {
+    if (!isManager) {
+      setError("You are logged in as PLAYER (read-only).");
+      return;
+    }
     if (!selected) return;
 
     const draft: Record<number, string> = {};
@@ -175,6 +181,10 @@ export function FormationsPage() {
   }
 
   async function saveSlots() {
+    if (!isManager) {
+      setError("You are logged in as PLAYER (read-only).");
+      return;
+    }
     if (!selected) return;
 
     setError("");
@@ -212,7 +222,7 @@ export function FormationsPage() {
 
       {error ? <p className="error">{error}</p> : null}
 
-      <CreateFormationForm onCreated={refresh} />
+      {isManager ? <CreateFormationForm onCreated={refresh} /> : null}
 
       {formations.length === 0 ? (
         <p style={{ marginTop: 12 }}>No formations saved yet.</p>
@@ -271,22 +281,24 @@ export function FormationsPage() {
                   <div style={{ opacity: 0.8 }}>({selected.shape})</div>
                 </div>
 
-                <div style={{ display: "flex", gap: 8 }}>
-                  {!editingSlots ? (
-                    <button type="button" onClick={startEditSlots} disabled={saving}>
-                      Edit slot labels
-                    </button>
-                  ) : (
-                    <>
-                      <button type="button" className="primary" onClick={saveSlots} disabled={saving}>
-                        {saving ? "Saving..." : "Save"}
+                {isManager ? (
+                  <div style={{ display: "flex", gap: 8 }}>
+                    {!editingSlots ? (
+                      <button type="button" onClick={startEditSlots} disabled={saving}>
+                        Edit slot labels
                       </button>
-                      <button type="button" onClick={cancelEditSlots} disabled={saving}>
-                        Cancel
-                      </button>
-                    </>
-                  )}
-                </div>
+                    ) : (
+                      <>
+                        <button type="button" className="primary" onClick={saveSlots} disabled={saving}>
+                          {saving ? "Saving..." : "Save"}
+                        </button>
+                        <button type="button" onClick={cancelEditSlots} disabled={saving}>
+                          Cancel
+                        </button>
+                      </>
+                    )}
+                  </div>
+                ) : null}
               </div>
 
               {/* Pitch-style layout */}
@@ -327,14 +339,7 @@ export function FormationsPage() {
                         ) : (
                           <>
                             {/* LEFT */}
-                            <div
-                              style={{
-                                display: "flex",
-                                gap: 10,
-                                flexWrap: "wrap",
-                                justifyContent: "flex-start",
-                              }}
-                            >
+                            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-start" }}>
                               {left.map((s) => (
                                 <div
                                   key={`${line}-L-${s.idx}`}
@@ -348,7 +353,7 @@ export function FormationsPage() {
                                   }}
                                   title={`Slot #${s.idx + 1}`}
                                 >
-                                  {editingSlots ? (
+                                  {editingSlots && isManager ? (
                                     <input
                                       value={slotDraft[s.idx] ?? ""}
                                       onChange={(e) => setDraftForIndex(s.idx, e.target.value)}
@@ -369,14 +374,7 @@ export function FormationsPage() {
                             </div>
 
                             {/* CENTER */}
-                            <div
-                              style={{
-                                display: "flex",
-                                gap: 10,
-                                flexWrap: "wrap",
-                                justifyContent: "center",
-                              }}
-                            >
+                            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
                               {center.map((s) => (
                                 <div
                                   key={`${line}-C-${s.idx}`}
@@ -390,7 +388,7 @@ export function FormationsPage() {
                                   }}
                                   title={`Slot #${s.idx + 1}`}
                                 >
-                                  {editingSlots ? (
+                                  {editingSlots && isManager ? (
                                     <input
                                       value={slotDraft[s.idx] ?? ""}
                                       onChange={(e) => setDraftForIndex(s.idx, e.target.value)}
@@ -411,14 +409,7 @@ export function FormationsPage() {
                             </div>
 
                             {/* RIGHT */}
-                            <div
-                              style={{
-                                display: "flex",
-                                gap: 10,
-                                flexWrap: "wrap",
-                                justifyContent: "flex-end",
-                              }}
-                            >
+                            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
                               {right.map((s) => (
                                 <div
                                   key={`${line}-R-${s.idx}`}
@@ -432,7 +423,7 @@ export function FormationsPage() {
                                   }}
                                   title={`Slot #${s.idx + 1}`}
                                 >
-                                  {editingSlots ? (
+                                  {editingSlots && isManager ? (
                                     <input
                                       value={slotDraft[s.idx] ?? ""}
                                       onChange={(e) => setDraftForIndex(s.idx, e.target.value)}
@@ -459,7 +450,7 @@ export function FormationsPage() {
                 })}
               </div>
 
-              {editingSlots ? (
+              {editingSlots && isManager ? (
                 <p style={{ marginTop: 12, opacity: 0.8, fontSize: 13 }}>
                   Tip: Use standard labels like GK/LB/CB/RB, CDM/CM/CAM, LW/ST/RW.
                 </p>

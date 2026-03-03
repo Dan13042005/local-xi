@@ -65,6 +65,10 @@ export function MatchesPage() {
   const [formations, setFormations] = useState<Formation[]>([]);
   const [lineupByMatchId, setLineupByMatchId] = useState<Record<number, number>>({});
 
+  // ✅ role gate (PLAYER = read-only, MANAGER = edit)
+  const role = localStorage.getItem("role");
+  const isManager = role === "MANAGER";
+
   function formationLabel(matchId: number): string {
     const formationId = lineupByMatchId[matchId];
     if (!formationId) return "—";
@@ -176,10 +180,13 @@ export function MatchesPage() {
     date.trim().length > 0 &&
     trimmedOpponent.length > 0 &&
     goalsForParsed.valid &&
-    goalsAgainstParsed.valid;
+    goalsAgainstParsed.valid &&
+    isManager; // ✅ only managers can add
 
   const submitHint =
-    date.trim().length === 0
+    !isManager
+      ? "You are logged in as PLAYER (read-only)."
+      : date.trim().length === 0
       ? "Pick a date."
       : trimmedOpponent.length === 0
       ? "Enter an opponent."
@@ -193,6 +200,10 @@ export function MatchesPage() {
     e.preventDefault();
     setError("");
 
+    if (!isManager) {
+      setError("You are logged in as PLAYER (read-only).");
+      return;
+    }
     if (!canSubmit) return;
 
     try {
@@ -220,6 +231,11 @@ export function MatchesPage() {
 
   async function handleDeleteSelected() {
     setError("");
+
+    if (!isManager) {
+      setError("You are logged in as PLAYER (read-only).");
+      return;
+    }
 
     if (selectedIds.length === 0) {
       setError("Select at least one match to delete.");
@@ -250,7 +266,8 @@ export function MatchesPage() {
 
       if (q.length === 0) return true;
 
-      const score = m.goalsFor != null && m.goalsAgainst != null ? `${m.goalsFor}-${m.goalsAgainst}` : "";
+      const score =
+        m.goalsFor != null && m.goalsAgainst != null ? `${m.goalsFor}-${m.goalsAgainst}` : "";
       const haystack = `${m.opponent} ${m.date} ${score}`.toLowerCase();
 
       return haystack.includes(q);
@@ -271,6 +288,10 @@ export function MatchesPage() {
 
   // ---------- inline edit helpers ----------
   function startEdit(m: Match) {
+    if (!isManager) {
+      setError("You are logged in as PLAYER (read-only).");
+      return;
+    }
     setError("");
     setEditingId(m.id);
     setDraft({
@@ -305,6 +326,10 @@ export function MatchesPage() {
   }
 
   async function saveEdit(id: number) {
+    if (!isManager) {
+      setError("You are logged in as PLAYER (read-only).");
+      return;
+    }
     if (!draft) return;
 
     setError("");
@@ -362,13 +387,16 @@ export function MatchesPage() {
       <table>
         <thead>
           <tr>
-            <th>
-              <input
-                type="checkbox"
-                checked={allSelectedForThisTable}
-                onChange={(e) => toggleSelectAllFor(rows, e.target.checked)}
-              />
-            </th>
+            {isManager ? (
+              <th>
+                <input
+                  type="checkbox"
+                  checked={allSelectedForThisTable}
+                  onChange={(e) => toggleSelectAllFor(rows, e.target.checked)}
+                  disabled={saving}
+                />
+              </th>
+            ) : null}
             <th>Date</th>
             <th>Opponent</th>
             <th>H/A</th>
@@ -389,21 +417,25 @@ export function MatchesPage() {
 
             return (
               <tr key={`${tableKey}-${m.id}`}>
-                <td>
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.includes(m.id)}
-                    onChange={() => toggleSelected(m.id)}
-                    disabled={saving}
-                  />
-                </td>
+                {isManager ? (
+                  <td>
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(m.id)}
+                      onChange={() => toggleSelected(m.id)}
+                      disabled={saving}
+                    />
+                  </td>
+                ) : null}
 
                 <td>
                   {editing ? (
                     <input
                       type="date"
                       value={d!.date}
-                      onChange={(e) => setDraft((prev) => (prev ? { ...prev, date: e.target.value } : prev))}
+                      onChange={(e) =>
+                        setDraft((prev) => (prev ? { ...prev, date: e.target.value } : prev))
+                      }
                     />
                   ) : (
                     m.date
@@ -428,14 +460,18 @@ export function MatchesPage() {
                     <select
                       value={d!.home ? "home" : "away"}
                       onChange={(e) =>
-                        setDraft((prev) => (prev ? { ...prev, home: e.target.value === "home" } : prev))
+                        setDraft((prev) =>
+                          prev ? { ...prev, home: e.target.value === "home" } : prev
+                        )
                       }
                     >
                       <option value="home">H</option>
                       <option value="away">A</option>
                     </select>
+                  ) : m.home ? (
+                    "H"
                   ) : (
-                    (m.home ? "H" : "A")
+                    "A"
                   )}
                 </td>
 
@@ -447,7 +483,9 @@ export function MatchesPage() {
                         min={0}
                         step={1}
                         value={d!.goalsFor}
-                        onChange={(e) => setDraft((prev) => (prev ? { ...prev, goalsFor: e.target.value } : prev))}
+                        onChange={(e) =>
+                          setDraft((prev) => (prev ? { ...prev, goalsFor: e.target.value } : prev))
+                        }
                         placeholder="GF"
                         style={{ width: 70 }}
                       />
@@ -458,7 +496,9 @@ export function MatchesPage() {
                         step={1}
                         value={d!.goalsAgainst}
                         onChange={(e) =>
-                          setDraft((prev) => (prev ? { ...prev, goalsAgainst: e.target.value } : prev))
+                          setDraft((prev) =>
+                            prev ? { ...prev, goalsAgainst: e.target.value } : prev
+                          )
                         }
                         placeholder="GA"
                         style={{ width: 70 }}
@@ -478,19 +518,28 @@ export function MatchesPage() {
                 </td>
 
                 <td>
-                  {editing ? (
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <button type="button" className="primary" onClick={() => saveEdit(m.id)} disabled={saving}>
-                        {saving ? "Saving..." : "Save"}
+                  {isManager ? (
+                    editing ? (
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button
+                          type="button"
+                          className="primary"
+                          onClick={() => saveEdit(m.id)}
+                          disabled={saving}
+                        >
+                          {saving ? "Saving..." : "Save"}
+                        </button>
+                        <button type="button" onClick={cancelEdit} disabled={saving}>
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button type="button" onClick={() => startEdit(m)} disabled={saving}>
+                        Edit
                       </button>
-                      <button type="button" onClick={cancelEdit} disabled={saving}>
-                        Cancel
-                      </button>
-                    </div>
+                    )
                   ) : (
-                    <button type="button" onClick={() => startEdit(m)} disabled={saving}>
-                      Edit
-                    </button>
+                    <span style={{ opacity: 0.6 }}>Read only</span>
                   )}
                 </td>
               </tr>
@@ -509,63 +558,78 @@ export function MatchesPage() {
     <section>
       <h2>Matches</h2>
 
-      <form className="card" onSubmit={handleAddMatch}>
-        <div className="form-row">
-          <label>
-            Date
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-          </label>
+      {isManager ? (
+        <form className="card" onSubmit={handleAddMatch}>
+          <div className="form-row">
+            <label>
+              Date
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </label>
 
-          <label>
-            Opponent
-            <input value={opponent} onChange={(e) => setOpponent(e.target.value)} placeholder="e.g. Riverside FC" />
-          </label>
+            <label>
+              Opponent
+              <input
+                value={opponent}
+                onChange={(e) => setOpponent(e.target.value)}
+                placeholder="e.g. Riverside FC"
+              />
+            </label>
 
-          <label>
-            Venue
-            <select value={home ? "home" : "away"} onChange={(e) => setHome(e.target.value === "home")}>
-              <option value="home">Home</option>
-              <option value="away">Away</option>
-            </select>
-          </label>
+            <label>
+              Venue
+              <select value={home ? "home" : "away"} onChange={(e) => setHome(e.target.value === "home")}>
+                <option value="home">Home</option>
+                <option value="away">Away</option>
+              </select>
+            </label>
 
-          <label>
-            Goals For (optional)
-            <input
-              type="number"
-              min={0}
-              step={1}
-              value={goalsFor}
-              onChange={(e) => setGoalsFor(e.target.value)}
-              placeholder="e.g. 2"
-            />
-          </label>
+            <label>
+              Goals For (optional)
+              <input
+                type="number"
+                min={0}
+                step={1}
+                value={goalsFor}
+                onChange={(e) => setGoalsFor(e.target.value)}
+                placeholder="e.g. 2"
+              />
+            </label>
 
-          <label>
-            Goals Against (optional)
-            <input
-              type="number"
-              min={0}
-              step={1}
-              value={goalsAgainst}
-              onChange={(e) => setGoalsAgainst(e.target.value)}
-              placeholder="e.g. 1"
-            />
-          </label>
+            <label>
+              Goals Against (optional)
+              <input
+                type="number"
+                min={0}
+                step={1}
+                value={goalsAgainst}
+                onChange={(e) => setGoalsAgainst(e.target.value)}
+                placeholder="e.g. 1"
+              />
+            </label>
 
-          <button type="submit" className="primary" disabled={!canSubmit || saving}>
-            Add Match
-          </button>
+            <button type="submit" className="primary" disabled={!canSubmit || saving}>
+              Add Match
+            </button>
 
-          {!canSubmit && !error && submitHint ? <p className="error">{submitHint}</p> : null}
+            {!canSubmit && !error && submitHint ? <p className="error">{submitHint}</p> : null}
 
-          <button type="button" className="danger" onClick={handleDeleteSelected} disabled={selectedIds.length === 0 || saving}>
-            Delete Selected ({selectedIds.length})
-          </button>
-        </div>
+            <button
+              type="button"
+              className="danger"
+              onClick={handleDeleteSelected}
+              disabled={selectedIds.length === 0 || saving}
+            >
+              Delete Selected ({selectedIds.length})
+            </button>
+          </div>
 
-        {error ? <p className="error">{error}</p> : null}
-      </form>
+          {error ? <p className="error">{error}</p> : null}
+        </form>
+      ) : (
+        <p style={{ marginTop: 8, opacity: 0.8 }}>
+          Logged in as <strong>PLAYER</strong> — matches are read-only.
+        </p>
+      )}
 
       {/* Search + Venue filter */}
       <div className="card" style={{ marginTop: 12, padding: "12px 14px" }}>
@@ -596,6 +660,8 @@ export function MatchesPage() {
         <div style={{ marginTop: 8, opacity: 0.8, fontSize: 13 }}>
           Showing <strong>{showingCount}</strong> of <strong>{totalCount}</strong> matches.
         </div>
+
+        {error ? <p className="error" style={{ marginTop: 10 }}>{error}</p> : null}
       </div>
 
       {/* ✅ Lineup editor + Game summary for the opened match */}

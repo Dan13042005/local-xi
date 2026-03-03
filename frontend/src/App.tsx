@@ -11,6 +11,10 @@ import { FormationsPage } from "./pages/FormationsPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
 
 import LoginPage from "./pages/LoginPage";
+import { getToken, scheduleAutoLogout } from "./auth/session";
+
+const t = getToken();
+if (t) scheduleAutoLogout(t);
 
 type NavKey = "notices" | "players" | "matches" | "formations" | "analytics";
 
