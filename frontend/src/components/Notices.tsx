@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { createNotice, deleteNotice, getNotices, type Notice } from "../api/noticesAPI";
 
+function sortNewestFirst(notices: Notice[]) {
+  return [...notices].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+}
+
 export function Notices() {
   const [items, setItems] = useState<Notice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -18,11 +24,7 @@ export function Notices() {
     setError(null);
     try {
       const data = await getNotices();
-      // newest first (if backend doesn’t already)
-      const sorted = [...data].sort(
-        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      );
-      setItems(sorted);
+      setItems(sortNewestFirst(data));
     } catch (e: any) {
       setError(e?.message ?? "Failed to load notices");
     } finally {
@@ -42,8 +44,12 @@ export function Notices() {
     setError(null);
 
     try {
-      const created = await createNotice({ title: title.trim(), body: body.trim() });
-      setItems((prev) => [created, ...prev]);
+      const created = await createNotice({
+        title: title.trim(),
+        body: body.trim(),
+      });
+
+      setItems((prev) => sortNewestFirst([created, ...prev]));
       setTitle("");
       setBody("");
     } catch (e: any) {
@@ -69,14 +75,13 @@ export function Notices() {
     <div>
       <h2>Notices</h2>
 
-      {error && (
-        <div style={{ color: "crimson", marginBottom: 12 }}>
-          {error}
-        </div>
-      )}
+      {error && <div style={{ color: "crimson", marginBottom: 12 }}>{error}</div>}
 
       {isManager && (
-        <form onSubmit={onCreate} style={{ marginBottom: 16, padding: 12, border: "1px solid #ddd", borderRadius: 8 }}>
+        <form
+          onSubmit={onCreate}
+          style={{ marginBottom: 16, padding: 12, border: "1px solid #ddd", borderRadius: 8 }}
+        >
           <h3 style={{ marginTop: 0 }}>Post a notice</h3>
 
           <div style={{ marginBottom: 10 }}>
@@ -115,9 +120,7 @@ export function Notices() {
             <div key={n.id} style={{ border: "1px solid #ddd", borderRadius: 8, padding: 12 }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
                 <strong>{n.title}</strong>
-                <small style={{ opacity: 0.75 }}>
-                  {new Date(n.createdAt).toLocaleString()}
-                </small>
+                <small style={{ opacity: 0.75 }}>{new Date(n.createdAt).toLocaleString()}</small>
               </div>
 
               <div style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>{n.body}</div>

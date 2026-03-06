@@ -12,7 +12,6 @@ import java.util.Date;
 
 @Service
 public class JwtService {
-
     private final byte[] keyBytes;
     private final int expMinutes;
 
@@ -34,6 +33,7 @@ public class JwtService {
                 .expiration(Date.from(exp))
                 .claim("email", user.getEmail())
                 .claim("role", user.getRole().name())
+                .claim("roleId", user.getRole().name())
                 .claim("teamId", user.getTeam().getId())
                 .signWith(Keys.hmacShaKeyFor(keyBytes))
                 .compact();

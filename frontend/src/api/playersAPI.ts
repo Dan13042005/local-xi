@@ -13,9 +13,9 @@ export function createPlayer(player: Omit<Player, "id">): Promise<Player> {
 }
 
 export function deletePlayers(ids: number[]): Promise<void> {
-  return apiFetch<void>("/api/players/bulk-delete", {
-    method: "POST",
-    body: JSON.stringify({ ids }),
+  return apiFetch<void>("/api/players", {
+    method: "DELETE",
+    body: JSON.stringify(ids),
   });
 }
 

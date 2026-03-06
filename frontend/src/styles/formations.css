@@ -95,3 +95,75 @@
   color: var(--muted);
   font-size: 13px;
 }
+/* ════════════════════════════════════════
+   FORMATION TACTICAL BOARD
+════════════════════════════════════════ */
+
+.formationBoard {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 18px;
+
+  padding: 18px 12px;
+
+  border-radius: var(--radius-xl);
+  border: 1px solid rgba(34,197,94,0.18);
+
+  background:
+    radial-gradient(ellipse 600px 300px at 50% -20%, rgba(34,197,94,0.12), transparent 70%),
+    linear-gradient(180deg, rgba(12,18,28,0.95), rgba(8,14,22,0.95));
+
+  box-shadow:
+    0 0 0 1px rgba(34,197,94,0.08) inset,
+    0 18px 40px rgba(0,0,0,0.45);
+}
+
+/* each tactical line */
+.formationLineBox {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+
+  gap: 16px;
+  padding: 8px 4px;
+}
+
+/* player slot pills */
+
+.formationPill {
+  border-radius: 999px;
+  padding: 7px 14px;
+
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(15,22,33,0.60);
+
+  color: var(--text);
+  font-weight: 600;
+  font-size: 13px;
+
+  text-align: center;
+
+  box-shadow: 0 6px 14px rgba(0,0,0,0.35);
+
+  transition: transform 120ms ease, border-color 120ms ease;
+}
+
+.formationPill:hover {
+  transform: translateY(-1px);
+  border-color: rgba(34,197,94,0.35);
+}
+
+/* lane alignment */
+
+.formationLaneLeft {
+  justify-content: flex-start;
+}
+
+.formationLaneCenter {
+  justify-content: center;
+}
+
+.formationLaneRight {
+  justify-content: flex-end;
+}

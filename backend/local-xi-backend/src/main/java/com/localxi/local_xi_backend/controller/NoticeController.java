@@ -65,4 +65,27 @@ public class NoticeController {
 
         return ResponseEntity.ok(notices.save(n));
     }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<?> delete(@PathVariable Long id) {
+        String userIdStr = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        Long userId = Long.valueOf(userIdStr);
+
+        var userOpt = users.findById(userId);
+        if (userOpt.isEmpty()) return ResponseEntity.status(401).build();
+
+        var noticeOpt = notices.findById(id);
+        if (noticeOpt.isEmpty()) return ResponseEntity.notFound().build();
+
+        var notice = noticeOpt.get();
+        Long userTeamId = userOpt.get().getTeam().getId();
+        Long noticeTeamId = notice.getTeam().getId();
+
+        if (!userTeamId.equals(noticeTeamId)) {
+            return ResponseEntity.status(403).body("You cannot delete a notice for another team.");
+        }
+
+        notices.delete(notice);
+        return ResponseEntity.ok().build();
+    }
 }
