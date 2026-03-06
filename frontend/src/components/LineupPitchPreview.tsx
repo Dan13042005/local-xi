@@ -35,14 +35,16 @@ function slotLane(posLabel: string): Lane {
   if (
     p.startsWith("L") ||
     ["LB", "LWB", "LCB", "LM", "LDM", "LAM", "LW", "LF"].includes(p)
-  )
+  ) {
     return "L";
+  }
 
   if (
     p.startsWith("R") ||
     ["RB", "RWB", "RCB", "RM", "RDM", "RAM", "RW", "RF"].includes(p)
-  )
+  ) {
     return "R";
+  }
 
   return "C";
 }
@@ -58,7 +60,6 @@ type Props = {
   onSwapSlots?: (fromSlotId: string, toSlotId: string) => void;
   onDropPlayerToSlot?: (slotId: string, playerId: number) => void;
 
-  /** ✅ NEW: the element we export (PNG/PDF) */
   exportRef?: RefObject<HTMLDivElement | null>;
 };
 
@@ -76,15 +77,16 @@ export function LineupPitchPreview({
 
   const potmSlotId = (() => {
     let best: { slotId: string; rating: number } | null = null;
+
     for (const s of slots) {
       const r = typeof s.rating === "number" ? s.rating : null;
       if (r == null) continue;
       if (!best || r > best.rating) best = { slotId: s.slotId, rating: r };
     }
+
     return best?.slotId ?? null;
   })();
 
-  // Keep formation order
   const ordered: LineupSlot[] = [];
   for (const meta of formation.slots ?? []) {
     const s = slots.find((x) => x.slotId === meta.slotId);
@@ -132,20 +134,24 @@ export function LineupPitchPreview({
       const arr = groups[row][lane];
       const base = laneX[lane];
       const y = yForRow[row];
+
       arr.forEach((slot, i) =>
-        placements.push({ slot, xPct: spreadX(base, i, arr.length), yPct: y })
+        placements.push({
+          slot,
+          xPct: spreadX(base, i, arr.length),
+          yPct: y,
+        })
       );
     });
   });
 
-  // ✅ SHOW PLAYER NAME ON PITCH
   function labelFor(slot: LineupSlot) {
     if (slot.playerId == null) return slot.pos || "—";
 
     const p = playerById.get(slot.playerId);
     if (!p) return `#${slot.playerId}`;
 
-    return `${p.name} (#${p.number})`; // name + number
+    return `${p.name} (#${p.number})`;
   }
 
   function PlayerPill({ slot }: { slot: LineupSlot }) {
@@ -155,12 +161,19 @@ export function LineupPitchPreview({
 
     const isPotm = potmSlotId != null && slot.slotId === potmSlotId && r != null;
     const isSelected = selectedSlotId != null && slot.slotId === selectedSlotId;
-
     const draggableEnabled = !!onSwapSlots;
+    const isEmpty = slot.playerId == null;
+
+    const className =
+      "pitchPill" +
+      (isSelected ? " selected" : "") +
+      (isPotm ? " potm" : "") +
+      (isEmpty ? " empty" : "");
 
     return (
       <button
         type="button"
+        className={className}
         onClick={() => onSlotClick?.(slot.slotId)}
         draggable={draggableEnabled}
         onDragStart={(e) => {
@@ -198,24 +211,9 @@ export function LineupPitchPreview({
           }
         }}
         style={{
-          width: 170,
-          padding: "10px 12px",
-          borderRadius: 999,
-          background: "#fff",
-          cursor: onSlotClick || onSwapSlots || onDropPlayerToSlot ? "pointer" : "default",
-          border: isSelected
-            ? "3px solid #4f46e5"
-            : isPotm
-            ? "2px solid #ff9900"
-            : "1px solid rgba(0,0,0,0.22)",
-          boxShadow: isSelected
-            ? "0 8px 18px rgba(79,70,229,0.25)"
-            : isPotm
-            ? "0 6px 16px rgba(255,153,0,0.25)"
-            : "0 6px 14px rgba(0,0,0,0.10)",
-          textAlign: "center",
-          position: "relative",
-          userSelect: "none",
+          width: 138,
+          cursor:
+            onSlotClick || onSwapSlots || onDropPlayerToSlot ? "pointer" : "default",
         }}
         title={
           onDropPlayerToSlot
@@ -225,46 +223,33 @@ export function LineupPitchPreview({
             : label
         }
       >
-        {isPotm ? (
-          <div
-            style={{
-              position: "absolute",
-              top: -10,
-              right: 12,
-              background: "#fff3e0",
-              border: "1px solid #ffcc80",
-              borderRadius: 999,
-              padding: "2px 10px",
-              fontSize: 12,
-              fontWeight: 800,
-              color: "#7a4a00",
-            }}
-          >
-            🔥 POTM
-          </div>
-        ) : null}
+        {isPotm ? <div className="potmBadge">🔥 POTM</div> : null}
 
-        <div style={{ fontWeight: 800, fontSize: 14 }}>
+        <div className="pillTitle">
           {label}
           {slot.isCaptain ? " (C)" : ""}
         </div>
 
-        <div style={{ marginTop: 2, fontSize: 12, opacity: 0.8 }}>
-          {pos || "—"}
-          {r != null ? (
-            <>
-              {" "}
-              • ⭐ <span style={{ fontWeight: 700 }}>{r}</span>
-            </>
-          ) : null}
-        </div>
+        {!isEmpty && (
+          <div className="pillSub">
+            {pos || "—"}
+            {r != null ? (
+              <>
+                {" "}
+                • ⭐ <span className="pillRating">{r}</span>
+              </>
+            ) : null}
+          </div>
+        )}
 
-        <div style={{ marginTop: 4, fontSize: 12, display: "flex", justifyContent: "center", gap: 10 }}>
-          {(slot.goals ?? 0) > 0 && <span title="Goals">⚽ {slot.goals}</span>}
-          {(slot.assists ?? 0) > 0 && <span title="Assists">🅰️ {slot.assists}</span>}
-          {(slot.yellowCards ?? 0) > 0 && <span title="Yellow cards">🟨 {slot.yellowCards}</span>}
-          {(slot.redCards ?? 0) > 0 && <span title="Red cards">🟥 {slot.redCards}</span>}
-        </div>
+        {!isEmpty && (
+          <div className="pillStats">
+            {(slot.goals ?? 0) > 0 && <span title="Goals">⚽ {slot.goals}</span>}
+            {(slot.assists ?? 0) > 0 && <span title="Assists">🅰️ {slot.assists}</span>}
+            {(slot.yellowCards ?? 0) > 0 && <span title="Yellow cards">🟨 {slot.yellowCards}</span>}
+            {(slot.redCards ?? 0) > 0 && <span title="Red cards">🟥 {slot.redCards}</span>}
+          </div>
+        )}
       </button>
     );
   }
@@ -273,64 +258,39 @@ export function LineupPitchPreview({
     <div style={{ marginTop: 14 }}>
       <div style={{ fontWeight: 800, marginBottom: 10 }}>Pitch preview</div>
 
-      {/* ✅ THIS is what we export */}
       <div
         ref={exportRef}
+        className="pitch"
         style={{
           position: "relative",
           width: "100%",
-          height: 520,
-          borderRadius: 18,
-          overflow: "hidden",
-          border: "1px solid rgba(0,0,0,0.12)",
-          background: "linear-gradient(180deg, rgba(46,139,87,0.20), rgba(46,139,87,0.10))",
+          maxWidth: 720,
+          height: 570,
+          margin: "0 auto",
         }}
       >
         <div
+          className="pitchContent"
           style={{
-            position: "absolute",
-            inset: 14,
-            borderRadius: 14,
-            border: "2px solid rgba(255,255,255,0.65)",
+            position: "relative",
+            width: "100%",
+            height: "100%",
           }}
-        />
-        <div
-          style={{
-            position: "absolute",
-            left: 14,
-            right: 14,
-            top: "50%",
-            height: 2,
-            background: "rgba(255,255,255,0.65)",
-            transform: "translateY(-1px)",
-          }}
-        />
-        <div
-          style={{
-            position: "absolute",
-            top: "50%",
-            left: "50%",
-            width: 120,
-            height: 120,
-            borderRadius: 999,
-            border: "2px solid rgba(255,255,255,0.65)",
-            transform: "translate(-50%, -50%)",
-          }}
-        />
-
-        {placements.map(({ slot, xPct, yPct }) => (
-          <div
-            key={slot.slotId}
-            style={{
-              position: "absolute",
-              left: `${xPct}%`,
-              top: `${yPct}%`,
-              transform: "translate(-50%, -50%)",
-            }}
-          >
-            <PlayerPill slot={slot} />
-          </div>
-        ))}
+        >
+          {placements.map(({ slot, xPct, yPct }) => (
+            <div
+              key={slot.slotId}
+              style={{
+                position: "absolute",
+                left: `${xPct}%`,
+                top: `${yPct}%`,
+                transform: "translate(-50%, -50%)",
+              }}
+            >
+              <PlayerPill slot={slot} />
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

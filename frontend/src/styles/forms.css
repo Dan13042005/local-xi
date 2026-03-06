@@ -1,0 +1,136 @@
+/* ════════════════════════════════════════
+   FORMS
+════════════════════════════════════════ */
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1.6fr 0.8fr 0.8fr auto;
+  gap: 10px;
+  align-items: end;
+}
+
+@media (max-width: 640px) {
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+label {
+  display: grid;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--muted);
+}
+
+input,
+select {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  font-size: 0.875rem;
+  outline: none;
+  transition:
+    border-color var(--duration) var(--ease-out),
+    box-shadow var(--duration) var(--ease-out),
+    background var(--duration) var(--ease-out);
+}
+
+input:hover,
+select:hover {
+  border-color: var(--border-hover);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+input:focus,
+select:focus {
+  border-color: var(--border-focus);
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+select option {
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+.error {
+  margin: 8px 0 0;
+  font-size: 0.8125rem;
+  color: var(--danger);
+}
+
+/* ════════════════════════════════════════
+   BUTTONS — VARIANTS
+════════════════════════════════════════ */
+
+.primary {
+  border-color: rgba(34, 197, 94, 0.4);
+  background: linear-gradient(160deg, rgba(34, 197, 94, 0.25) 0%, rgba(34, 197, 94, 0.13) 100%);
+  color: rgba(34, 197, 94, 0.96);
+  box-shadow:
+    0 0 0 3px var(--accent-glow),
+    0 1px 0 rgba(34, 197, 94, 0.18) inset;
+}
+
+.primary:hover:not(:disabled) {
+  border-color: rgba(34, 197, 94, 0.6);
+  background: linear-gradient(160deg, rgba(34, 197, 94, 0.32) 0%, rgba(34, 197, 94, 0.18) 100%);
+  box-shadow:
+    0 0 0 4px var(--accent-glow),
+    0 1px 0 rgba(34, 197, 94, 0.22) inset,
+    0 8px 20px rgba(34, 197, 94, 0.12);
+}
+
+.danger {
+  border-color: var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--muted);
+}
+
+.danger:hover:not(:disabled) {
+  border-color: rgba(239, 68, 68, 0.4);
+  background: var(--danger-soft);
+  color: rgba(239, 68, 68, 0.9);
+}
+
+/* ════════════════════════════════════════
+   CHECKBOX GRID
+════════════════════════════════════════ */
+
+.checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding-top: 8px;
+}
+
+@media (max-width: 600px) {
+  .checkbox-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.checkbox-item {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 9px 11px;
+  font-size: 0.875rem;
+  background: rgba(255, 255, 255, 0.02);
+  cursor: pointer;
+  transition:
+    border-color var(--duration) var(--ease-out),
+    background var(--duration) var(--ease-out);
+}
+
+.checkbox-item:hover {
+  border-color: rgba(34, 197, 94, 0.28);
+  background: rgba(34, 197, 94, 0.05);
+}

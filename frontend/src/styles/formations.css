@@ -1,0 +1,97 @@
+/* ════════════════════════════════════════
+   FORMATION PREVIEW
+════════════════════════════════════════ */
+
+.formationPreviewCard {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.015));
+}
+
+.formationLines {
+  margin-top: 14px;
+  display: grid;
+  gap: 14px;
+}
+
+.formationLineBlock {
+  display: block;
+}
+
+.formationLineTitle {
+  font-weight: 700;
+  margin-bottom: 6px;
+  color: var(--text);
+}
+
+.formationLineBox {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+  padding: 10px 8px;
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.01);
+}
+
+.formationLane {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.formationLaneLeft {
+  justify-content: flex-start;
+}
+
+.formationLaneCenter {
+  justify-content: center;
+}
+
+.formationLaneRight {
+  justify-content: flex-end;
+}
+
+.formationPill {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  padding: 6px 14px;
+  min-width: 56px;
+  text-align: center;
+  background: rgba(15, 22, 33, 0.6);
+  color: var(--text);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.25);
+  transition:
+    transform 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease,
+    background 120ms ease;
+}
+
+.formationPill:hover {
+  transform: translateY(-1px);
+  border-color: rgba(34, 197, 94, 0.35);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.32);
+}
+
+.formationSlotInput {
+  width: 70px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  padding: 4px 8px;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  outline: none;
+}
+
+.formationSlotInput:focus {
+  border-color: rgba(34, 197, 94, 0.45);
+  box-shadow: 0 0 0 4px var(--accent-glow);
+}
+
+.formationEmpty {
+  grid-column: 1 / -1;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+}

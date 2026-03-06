@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import "./App.css";
 
 import { Header } from "./components/Header";
 import { Nav } from "./components/Nav";
@@ -12,7 +11,13 @@ import { AnalyticsPage } from "./pages/AnalyticsPage";
 
 import LoginPage from "./pages/LoginPage";
 
-import { getToken, getRole, clearSession, scheduleAutoLogout, consumeAuthFlash } from "./auth/session";
+import {
+  getToken,
+  getRole,
+  clearSession,
+  scheduleAutoLogout,
+  consumeAuthFlash,
+} from "./auth/session";
 
 type NavKey = "notices" | "players" | "matches" | "formations" | "analytics";
 
@@ -21,18 +26,15 @@ export default function App() {
   const [token, setTokenState] = useState<string | null>(getToken());
   const [flash, setFlash] = useState<string | null>(consumeAuthFlash());
 
-  // On mount: if token exists, schedule auto logout
   useEffect(() => {
     const t = getToken();
     if (t) {
       scheduleAutoLogout(t);
       setTokenState(t);
     }
-    // consume any flash on load
     setFlash(consumeAuthFlash());
   }, []);
 
-  // Keep state in sync if token/role changes in another tab
   useEffect(() => {
     const onStorage = () => {
       setTokenState(getToken());
@@ -48,7 +50,9 @@ export default function App() {
   }, [token]);
 
   const subtitle = useMemo(() => {
-    return roleLabel ? `Sunday League Team Manager • ${roleLabel}` : "Sunday League Team Manager";
+    return roleLabel
+      ? `Sunday League Team Manager • ${roleLabel}`
+      : "Sunday League Team Manager";
   }, [roleLabel]);
 
   function handleLogout() {
@@ -63,45 +67,55 @@ export default function App() {
       scheduleAutoLogout(t);
       setTokenState(t);
     }
-    // clear any old flash
     setFlash(null);
   }
 
-  // Not logged in → show login screen only
   if (!token) {
     return (
       <div className="app">
-        <Header title="Local XI" subtitle={subtitle} />
-        <main className="app-main">
-          {flash ? (
-            <div className="card" style={{ maxWidth: 420, margin: "16px auto", padding: 12 }}>
-              {flash}
-            </div>
-          ) : null}
+        <div className="shell card">
+          <Header title="Local XI" subtitle={subtitle} />
 
-          <LoginPage onLoggedIn={handleLoggedIn} />
-        </main>
+          <main className="app-main">
+            {flash ? (
+              <div className="card flash" style={{ maxWidth: 460, margin: "16px auto" }}>
+                {flash}
+              </div>
+            ) : null}
+
+            <div className="card authCard">
+              <LoginPage onLoggedIn={handleLoggedIn} />
+            </div>
+          </main>
+        </div>
       </div>
     );
   }
 
-  // Logged in → show full app
   return (
     <div className="app">
-      <Header title="Local XI" subtitle={subtitle} />
-      <Nav active={active} onChange={setActive} />
+      <div className="shell card">
+        <Header title="Local XI" subtitle={subtitle} />
+        <Nav active={active} onChange={setActive} />
 
-      <main className="app-main">
-        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
-          <button onClick={handleLogout}>Logout</button>
-        </div>
+        <main className="app-main">
+          <div className="topbar">
+            <div className="topbarRight">
+              <button className="btn" onClick={handleLogout}>
+                Logout
+              </button>
+            </div>
+          </div>
 
-        {active === "notices" && <NoticesPage />}
-        {active === "players" && <PlayersPage />}
-        {active === "matches" && <MatchesPage />}
-        {active === "formations" && <FormationsPage />}
-        {active === "analytics" && <AnalyticsPage />}
-      </main>
+          <div className="content card">
+            {active === "notices" && <NoticesPage />}
+            {active === "players" && <PlayersPage />}
+            {active === "matches" && <MatchesPage />}
+            {active === "formations" && <FormationsPage />}
+            {active === "analytics" && <AnalyticsPage />}
+          </div>
+        </main>
+      </div>
     </div>
   );
 }

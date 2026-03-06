@@ -1,0 +1,38 @@
+/* ════════════════════════════════════════
+   TABLES
+════════════════════════════════════════ */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 14px;
+}
+
+th,
+td {
+  border-bottom: 1px solid var(--border);
+  padding: 10px 10px;
+  text-align: left;
+  font-size: 0.875rem;
+}
+
+th {
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding-bottom: 8px;
+}
+
+tbody tr {
+  transition: background var(--duration) var(--ease-out);
+}
+
+tbody tr:hover td {
+  background: rgba(255, 255, 255, 0.028);
+}
+
+tbody tr:last-child td {
+  border-bottom: none;
+}

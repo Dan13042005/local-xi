@@ -10,19 +10,10 @@ function guessLine(position: string): LineKey {
 
   if (p === "GK") return "GK";
 
-  // Defence
   if (["LB", "RB", "CB", "LCB", "RCB", "LWB", "RWB"].includes(p)) return "DEF";
-
-  // Defensive midfield
   if (["CDM", "DM", "LDM", "RDM"].includes(p)) return "DM";
-
-  // Attacking midfield (includes wide mids)
   if (["CAM", "AM", "LAM", "RAM", "LM", "RM"].includes(p)) return "AM";
-
-  // Central midfield
   if (["CM", "LCM", "RCM"].includes(p)) return "MID";
-
-  // Attack
   if (["ST", "CF", "LW", "RW", "LF", "RF"].includes(p)) return "ATT";
 
   return "MID";
@@ -50,12 +41,10 @@ type Lane = "left" | "center" | "right";
 function laneForPosition(position: string): Lane {
   const p = position.toUpperCase().trim();
 
-  // Left side
-  if (p.startsWith("L")) return "left"; // LB, LCB, LCM, LW, LM, etc
+  if (p.startsWith("L")) return "left";
   if (["LM", "LW", "LF", "LWB"].includes(p)) return "left";
 
-  // Right side
-  if (p.startsWith("R")) return "right"; // RB, RCB, RCM, RW, RM, etc
+  if (p.startsWith("R")) return "right";
   if (["RM", "RW", "RF", "RWB"].includes(p)) return "right";
 
   return "center";
@@ -77,12 +66,10 @@ export function FormationsPage() {
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
-  // Slot edit state
   const [editingSlots, setEditingSlots] = useState(false);
   const [slotDraft, setSlotDraft] = useState<Record<number, string>>({});
   const [saving, setSaving] = useState(false);
 
-  // ✅ role gate (PLAYER = read-only, MANAGER = edit)
   const role = localStorage.getItem("role");
   const isManager = role === "MANAGER";
 
@@ -116,7 +103,6 @@ export function FormationsPage() {
     [formations, selectedId]
   );
 
-  // group slots into pitch lines, but keep original slot index (important for editing)
   const grouped = useMemo(() => {
     const lines: Record<LineKey, { position: string; idx: number }[]> = {
       ATT: [],
@@ -250,7 +236,7 @@ export function FormationsPage() {
                     }}
                     style={{
                       cursor: "pointer",
-                      background: f.id === selectedId ? "rgba(0,0,0,0.04)" : "transparent",
+                      background: f.id === selectedId ? "rgba(34, 197, 94, 0.08)" : "transparent",
                     }}
                   >
                     <td>{f.name}</td>
@@ -265,7 +251,7 @@ export function FormationsPage() {
           <h3 style={{ marginTop: "1rem" }}>Preview</h3>
 
           {selected ? (
-            <div className="card" style={{ padding: 12 }}>
+            <div className="card formationPreviewCard" style={{ padding: 12 }}>
               <div
                 style={{
                   display: "flex",
@@ -301,8 +287,7 @@ export function FormationsPage() {
                 ) : null}
               </div>
 
-              {/* Pitch-style layout */}
-              <div style={{ marginTop: 14, display: "grid", gap: 14 }}>
+              <div className="formationLines">
                 {(["ATT", "AM", "MID", "DM", "DEF", "GK"] as LineKey[]).map((line) => {
                   const lineSlots = [...grouped[line]].sort(sortByLaneThenName);
 
@@ -311,59 +296,26 @@ export function FormationsPage() {
                   const right = lineSlots.filter((s) => laneForPosition(s.position) === "right");
 
                   return (
-                    <div key={line}>
-                      <div style={{ fontWeight: 700, marginBottom: 6 }}>{lineTitle(line)}</div>
+                    <div key={line} className="formationLineBlock">
+                      <div className="formationLineTitle">{lineTitle(line)}</div>
 
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "1fr 1fr 1fr",
-                          gap: 10,
-                          padding: "10px 8px",
-                          border: "1px dashed rgba(0,0,0,0.15)",
-                          borderRadius: 12,
-                          alignItems: "center",
-                        }}
-                      >
+                      <div className="formationLineBox">
                         {lineSlots.length === 0 ? (
-                          <div
-                            style={{
-                              gridColumn: "1 / -1",
-                              textAlign: "center",
-                              opacity: 0.6,
-                              fontSize: 13,
-                            }}
-                          >
-                            No slots
-                          </div>
+                          <div className="formationEmpty">No slots</div>
                         ) : (
                           <>
-                            {/* LEFT */}
-                            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-start" }}>
+                            <div className="formationLane formationLaneLeft">
                               {left.map((s) => (
                                 <div
                                   key={`${line}-L-${s.idx}`}
-                                  style={{
-                                    border: "1px solid rgba(0,0,0,0.2)",
-                                    borderRadius: 999,
-                                    padding: "6px 14px",
-                                    minWidth: 56,
-                                    textAlign: "center",
-                                    background: "#fff",
-                                  }}
+                                  className="formationPill"
                                   title={`Slot #${s.idx + 1}`}
                                 >
                                   {editingSlots && isManager ? (
                                     <input
+                                      className="formationSlotInput"
                                       value={slotDraft[s.idx] ?? ""}
                                       onChange={(e) => setDraftForIndex(s.idx, e.target.value)}
-                                      style={{
-                                        width: 70,
-                                        border: "1px solid rgba(0,0,0,0.2)",
-                                        borderRadius: 8,
-                                        padding: "4px 8px",
-                                        textAlign: "center",
-                                      }}
                                       disabled={saving}
                                     />
                                   ) : (
@@ -373,32 +325,18 @@ export function FormationsPage() {
                               ))}
                             </div>
 
-                            {/* CENTER */}
-                            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
+                            <div className="formationLane formationLaneCenter">
                               {center.map((s) => (
                                 <div
                                   key={`${line}-C-${s.idx}`}
-                                  style={{
-                                    border: "1px solid rgba(0,0,0,0.2)",
-                                    borderRadius: 999,
-                                    padding: "6px 14px",
-                                    minWidth: 56,
-                                    textAlign: "center",
-                                    background: "#fff",
-                                  }}
+                                  className="formationPill"
                                   title={`Slot #${s.idx + 1}`}
                                 >
                                   {editingSlots && isManager ? (
                                     <input
+                                      className="formationSlotInput"
                                       value={slotDraft[s.idx] ?? ""}
                                       onChange={(e) => setDraftForIndex(s.idx, e.target.value)}
-                                      style={{
-                                        width: 70,
-                                        border: "1px solid rgba(0,0,0,0.2)",
-                                        borderRadius: 8,
-                                        padding: "4px 8px",
-                                        textAlign: "center",
-                                      }}
                                       disabled={saving}
                                     />
                                   ) : (
@@ -408,32 +346,18 @@ export function FormationsPage() {
                               ))}
                             </div>
 
-                            {/* RIGHT */}
-                            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                            <div className="formationLane formationLaneRight">
                               {right.map((s) => (
                                 <div
                                   key={`${line}-R-${s.idx}`}
-                                  style={{
-                                    border: "1px solid rgba(0,0,0,0.2)",
-                                    borderRadius: 999,
-                                    padding: "6px 14px",
-                                    minWidth: 56,
-                                    textAlign: "center",
-                                    background: "#fff",
-                                  }}
+                                  className="formationPill"
                                   title={`Slot #${s.idx + 1}`}
                                 >
                                   {editingSlots && isManager ? (
                                     <input
+                                      className="formationSlotInput"
                                       value={slotDraft[s.idx] ?? ""}
                                       onChange={(e) => setDraftForIndex(s.idx, e.target.value)}
-                                      style={{
-                                        width: 70,
-                                        border: "1px solid rgba(0,0,0,0.2)",
-                                        borderRadius: 8,
-                                        padding: "4px 8px",
-                                        textAlign: "center",
-                                      }}
                                       disabled={saving}
                                     />
                                   ) : (
