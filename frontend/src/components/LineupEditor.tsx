@@ -19,11 +19,12 @@ type PlayerStats = {
   assists: number | null;
   yellowCards: number | null;
   redCards: number | null;
+  rating: number | null;
 };
 
 type ParsedNumber = {
-  value: number | null; // null means blank
-  valid: boolean; // false means invalid input
+  value: number | null;
+  valid: boolean;
 };
 
 function parseOptionalNonNegativeInt(raw: string): ParsedNumber {
@@ -37,7 +38,7 @@ function parseOptionalNonNegativeInt(raw: string): ParsedNumber {
 }
 
 function emptyPlayerStats(): PlayerStats {
-  return { goals: null, assists: null, yellowCards: null, redCards: null };
+  return { goals: null, assists: null, yellowCards: null, redCards: null, rating: null };
 }
 
 function buildEmptySlots(formation: Formation): LineupSlot[] {
@@ -68,7 +69,6 @@ function mergeSlots(formation: Formation, existing: LineupSlot[] | undefined): L
   });
 }
 
-// Allows decimals; clamps to 0.0–10.0; keeps 1dp
 function parseRating(raw: string): number | null {
   const t = raw.trim();
   if (t === "") return null;
@@ -89,12 +89,12 @@ function fromPlayerStatsArray(arr: PlayerMatchStat[] | undefined): Record<number
       assists: s.assists ?? null,
       yellowCards: s.yellowCards ?? null,
       redCards: s.redCards ?? null,
+      rating: s.rating ?? null,
     };
   }
   return out;
 }
 
-// Backward compat: if stats were previously stored on slots, extract them by playerId
 function fromSlotsLegacy(slots: Array<any> | undefined): Record<number, PlayerStats> {
   const out: Record<number, PlayerStats> = {};
   for (const s of slots ?? []) {
@@ -105,6 +105,7 @@ function fromSlotsLegacy(slots: Array<any> | undefined): Record<number, PlayerSt
       assists: s.assists ?? null,
       yellowCards: s.yellowCards ?? null,
       redCards: s.redCards ?? null,
+      rating: s.rating ?? null,
     };
   }
   return out;
@@ -117,6 +118,7 @@ function toPlayerStatsArray(map: Record<number, PlayerStats>): PlayerMatchStat[]
     assists: st.assists ?? null,
     yellowCards: st.yellowCards ?? null,
     redCards: st.redCards ?? null,
+    rating: st.rating ?? null,
   }));
 }
 
@@ -135,7 +137,6 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
   const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
   const [selectedBenchPlayerId, setSelectedBenchPlayerId] = useState<number | null>(null);
 
-  // ✅ FIX: ref type must allow null
   const pitchRef = useRef<HTMLDivElement | null>(null);
 
   const selectedFormation = useMemo(
@@ -154,16 +155,29 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
   }, [players, selectedPlayerIds]);
 
   const slotsForDisplay = useMemo(() => {
-    return slots.map((s) => {
-      if (s.playerId == null) {
-        return { ...s, goals: null, assists: null, yellowCards: null, redCards: null };
-      }
-      const st = playerStatsById[s.playerId] ?? emptyPlayerStats();
-      return { ...s, ...st };
-    });
-  }, [slots, playerStatsById]);
+  return slots.map((s) => {
+    if (s.playerId == null) {
+      return {
+        ...s,
+        goals: null,
+        assists: null,
+        yellowCards: null,
+        redCards: null,
+      };
+    }
 
-  // ✅ IMPORTANT: do NOT let lineup fetch failure stop formations loading
+    const st = playerStatsById[s.playerId] ?? emptyPlayerStats();
+
+    return {
+      ...s,
+      goals: st.goals,
+      assists: st.assists,
+      yellowCards: st.yellowCards,
+      redCards: st.redCards,
+    };
+  });
+}, [slots, playerStatsById]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -180,16 +194,13 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
           getLineupForMatch(matchId),
         ]);
 
-        // players
         const ps = psRes.status === "fulfilled" ? psRes.value : [];
         if (!cancelled) setPlayers([...ps].sort((a, b) => a.number - b.number));
 
-        // formations (must always be set if API works)
         const fs = fsRes.status === "fulfilled" ? fsRes.value : [];
         const sortedFormations = [...fs].sort((a, b) => a.name.localeCompare(b.name));
         if (!cancelled) setFormations(sortedFormations);
 
-        // lineup (optional)
         let existing: any = null;
         if (existingRes.status === "fulfilled") {
           existing = existingRes.value;
@@ -197,7 +208,6 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
           const msg =
             existingRes.reason instanceof Error ? existingRes.reason.message : String(existingRes.reason);
 
-          // ignore "no lineup yet" style errors
           const looksLike404 = msg.includes("404") || msg.toLowerCase().includes("not found");
           if (!looksLike404) {
             if (!cancelled) setError(msg || "Failed to load existing lineup.");
@@ -264,7 +274,11 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
     setSlots((prev) => prev.map((s) => (s.slotId === slotId ? { ...s, rating } : s)));
   }
 
-  function setStatForPlayer(playerId: number | null, field: keyof PlayerStats, raw: string) {
+  function setStatForPlayer(
+    playerId: number | null,
+    field: "goals" | "assists" | "yellowCards" | "redCards",
+    raw: string
+  ) {
     if (playerId == null) return;
 
     const parsed = parseOptionalNonNegativeInt(raw);
@@ -273,6 +287,15 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
     setPlayerStatsById((prev) => {
       const curr = prev[playerId] ?? emptyPlayerStats();
       return { ...prev, [playerId]: { ...curr, [field]: parsed.value } };
+    });
+  }
+
+  function setBenchPlayerRating(playerId: number, raw: string) {
+    const rating = parseRating(raw);
+
+    setPlayerStatsById((prev) => {
+      const curr = prev[playerId] ?? emptyPlayerStats();
+      return { ...prev, [playerId]: { ...curr, rating } };
     });
   }
 
@@ -356,8 +379,13 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
     for (const [pidStr, st] of Object.entries(playerStatsById)) {
       const pid = Number(pidStr);
       if (!Number.isFinite(pid)) return "Invalid player stats detected.";
+
       const vals = [st.goals, st.assists, st.yellowCards, st.redCards];
       if (vals.some((v) => v != null && v < 0)) return "Stats must be 0 or higher.";
+
+      if (st.rating != null && (st.rating < 0 || st.rating > 10)) {
+        return "Bench player ratings must be between 0 and 10.";
+      }
     }
 
     return "";
@@ -381,7 +409,8 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
           (s.goals ?? 0) > 0 ||
           (s.assists ?? 0) > 0 ||
           (s.yellowCards ?? 0) > 0 ||
-          (s.redCards ?? 0) > 0
+          (s.redCards ?? 0) > 0 ||
+          s.rating != null
       ),
     };
 
@@ -397,7 +426,6 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
     }
   }
 
-  // ✅ EXPORT (PNG + PDF)
   async function handleExportPng() {
     const el = pitchRef.current;
     if (!el) return;
@@ -526,7 +554,12 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
               exportRef={pitchRef}
             />
 
-            <LineupStatsDashboard formation={selectedFormation} slots={slotsForDisplay} players={players} />
+            <LineupStatsDashboard
+              formation={selectedFormation}
+              slots={slotsForDisplay}
+              players={players}
+              playerStats={toPlayerStatsArray(playerStatsById)}
+            />
           </div>
 
           <div style={{ marginTop: 14 }}>
@@ -535,35 +568,77 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
             {benchPlayers.length === 0 ? (
               <div style={{ opacity: 0.7, fontSize: 13 }}>No bench players (everyone is on the pitch).</div>
             ) : (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-start" }}>
                 {benchPlayers.map((p) => {
                   const active = selectedBenchPlayerId === p.id;
+                  const benchStats = playerStatsById[p.id] ?? emptyPlayerStats();
 
                   return (
-                    <button
+                    <div
                       key={p.id}
-                      type="button"
-                      draggable
-                      onDragStart={(e) => {
-                        e.dataTransfer.setData("text/plain", `player:${p.id}`);
-                        e.dataTransfer.effectAllowed = "copy";
-                        setSelectedBenchPlayerId(p.id);
-                        setSelectedSlotId(null);
-                      }}
-                      onClick={() => handleBenchClick(p.id)}
                       style={{
-                        borderRadius: 999,
-                        padding: "8px 12px",
-                        border: active ? "2px solid #4f46e5" : "1px solid rgba(0,0,0,0.22)",
-                        background: active ? "rgba(79,70,229,0.08)" : "#fff",
-                        boxShadow: active ? "0 8px 18px rgba(79,70,229,0.18)" : "0 6px 14px rgba(0,0,0,0.08)",
-                        cursor: "grab",
-                        fontWeight: 800,
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        gap: 6,
+                        minWidth: 120,
                       }}
-                      title={`${p.name} (${p.positions.join(", ")})`}
                     >
-                      #{p.number} {p.name}
-                    </button>
+                      <button
+                        type="button"
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData("text/plain", `player:${p.id}`);
+                          e.dataTransfer.effectAllowed = "copy";
+                          setSelectedBenchPlayerId(p.id);
+                          setSelectedSlotId(null);
+                        }}
+                        onClick={() => handleBenchClick(p.id)}
+                        style={{
+                          borderRadius: 999,
+                          padding: "8px 12px",
+                          border: active
+                            ? "2px solid rgba(34, 197, 94, 0.65)"
+                            : "1px solid rgba(255, 255, 255, 0.14)",
+                          background: active
+                            ? "rgba(34, 197, 94, 0.12)"
+                            : "rgba(15, 22, 33, 0.6)",
+                          color: "var(--text)",
+                          boxShadow: active
+                            ? "0 0 0 4px var(--accent-glow), 0 10px 22px rgba(0, 0, 0, 0.35)"
+                            : "0 10px 22px rgba(0, 0, 0, 0.35)",
+                          cursor: "grab",
+                          fontWeight: 800,
+                          whiteSpace: "nowrap",
+                          minWidth: 110,
+                          textAlign: "center",
+                        }}
+                        title={`${p.name} (${p.positions.join(", ")})`}
+                      >
+                        #{p.number} {p.name}
+                      </button>
+
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        max="10"
+                        placeholder="Rating"
+                        value={benchStats.rating ?? ""}
+                        onChange={(e) => setBenchPlayerRating(p.id, e.target.value)}
+                        disabled={saving}
+                        style={{
+                          width: 80,
+                          borderRadius: 8,
+                          border: "1px solid rgba(255,255,255,0.14)",
+                          background: "rgba(255,255,255,0.06)",
+                          color: "var(--text)",
+                          padding: "6px 8px",
+                          textAlign: "center",
+                        }}
+                        title="Bench player match rating"
+                      />
+                    </div>
                   );
                 })}
               </div>
@@ -589,8 +664,7 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
                   }}
                 >
                   <div style={{ fontWeight: 700 }}>
-                    {slotMeta.position}{" "}
-                    <span style={{ opacity: 0.6, fontWeight: 400 }}>({slotMeta.slotId})</span>
+                    {slotMeta.position} <span style={{ opacity: 0.6, fontWeight: 400 }}>({slotMeta.slotId})</span>
                   </div>
 
                   <select
@@ -613,8 +687,10 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
                   </select>
 
                   <input
-                    type="text"
-                    inputMode="decimal"
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="10"
                     placeholder="0–10"
                     value={slot.rating ?? ""}
                     onChange={(e) => setRating(slotMeta.slotId, e.target.value)}

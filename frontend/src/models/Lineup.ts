@@ -1,11 +1,10 @@
-// frontend/src/models/Lineup.ts
-
 export type PlayerMatchStat = {
   playerId: number;
   goals: number | null;
   assists: number | null;
   yellowCards: number | null;
   redCards: number | null;
+  rating: number | null;
 };
 
 export type LineupSlot = {

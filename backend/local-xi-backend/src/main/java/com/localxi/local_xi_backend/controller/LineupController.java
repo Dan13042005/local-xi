@@ -46,16 +46,12 @@ public class LineupController {
             return ResponseEntity.badRequest().body("slots are required");
         }
 
-        // ✅ load with children so updating stats doesn't hit lazy/serialization issues
         Lineup lineup = repo.findByMatchIdWithDetails(matchId).orElseGet(Lineup::new);
 
         lineup.setMatchId(matchId);
         lineup.setFormationId(payload.getFormationId());
         lineup.setCaptainPlayerId(payload.getCaptainPlayerId());
 
-        // ----------------------------
-        // Replace slots
-        // ----------------------------
         lineup.getSlots().clear();
         for (LineupSlot s : payload.getSlots()) {
             if (s.getSlotId() == null || s.getSlotId().trim().isEmpty()) {
@@ -82,43 +78,44 @@ public class LineupController {
             lineup.getSlots().add(slot);
         }
 
-        // --------------------------------------------
-        // ✅ Player stats: update-in-place by playerId
-        // IMPORTANT: payload.getPlayerStats() might be Set now
-        // --------------------------------------------
         Map<Long, LineupPlayerStat> existingByPlayerId = new HashMap<>();
         for (LineupPlayerStat s : lineup.getPlayerStats()) {
-            if (s.getPlayerId() != null) existingByPlayerId.put(s.getPlayerId(), s);
+            if (s.getPlayerId() != null) {
+                existingByPlayerId.put(s.getPlayerId(), s);
+            }
         }
 
-        // ✅ Accept either Set or List from payload safely
         Collection<LineupPlayerStat> incoming = payload.getPlayerStats();
 
-        // If frontend hasn't sent playerStats yet, derive from slots (legacy fallback)
         if (incoming == null || incoming.isEmpty()) {
             Map<Long, LineupPlayerStat> derived = new HashMap<>();
             for (LineupSlot s : payload.getSlots()) {
                 if (s.getPlayerId() == null) continue;
 
-                LineupPlayerStat stat = derived.computeIfAbsent(s.getPlayerId(), pid -> {
-                    LineupPlayerStat x = new LineupPlayerStat();
-                    x.setPlayerId(pid);
-                    x.setGoals(0);
-                    x.setAssists(0);
-                    x.setYellowCards(0);
-                    x.setRedCards(0);
-                    return x;
-                });
+                LineupPlayerStat stat = derived.get(s.getPlayerId());
+                if (stat == null) {
+                    stat = new LineupPlayerStat();
+                    stat.setPlayerId(s.getPlayerId());
+                    stat.setGoals(0);
+                    stat.setAssists(0);
+                    stat.setYellowCards(0);
+                    stat.setRedCards(0);
+                    stat.setRating(s.getRating());
+                    derived.put(s.getPlayerId(), stat);
+                }
 
                 stat.setGoals(n0(stat.getGoals()) + n0(s.getGoals()));
                 stat.setAssists(n0(stat.getAssists()) + n0(s.getAssists()));
                 stat.setYellowCards(n0(stat.getYellowCards()) + n0(s.getYellowCards()));
                 stat.setRedCards(n0(stat.getRedCards()) + n0(s.getRedCards()));
+
+                if (stat.getRating() == null && s.getRating() != null) {
+                    stat.setRating(s.getRating());
+                }
             }
-            incoming = derived.values(); // collection
+            incoming = derived.values();
         }
 
-        // Track which playerIds we want to keep
         Set<Long> keep = new HashSet<>();
 
         for (LineupPlayerStat in : incoming) {
@@ -142,9 +139,9 @@ public class LineupController {
             target.setAssists(in.getAssists());
             target.setYellowCards(in.getYellowCards());
             target.setRedCards(in.getRedCards());
+            target.setRating(in.getRating());
         }
 
-        // Remove stats not in incoming
         lineup.getPlayerStats().removeIf(s -> s.getPlayerId() != null && !keep.contains(s.getPlayerId()));
 
         return ResponseEntity.ok(repo.save(lineup));

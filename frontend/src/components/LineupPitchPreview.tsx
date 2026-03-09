@@ -49,6 +49,12 @@ function slotLane(posLabel: string): Lane {
   return "C";
 }
 
+function displayName(name: string): string {
+  const parts = (name ?? "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return parts[0] ?? "";
+  return parts[parts.length - 1];
+}
+
 type Props = {
   formation: Formation;
   slots: LineupSlot[];
@@ -151,7 +157,7 @@ export function LineupPitchPreview({
     const p = playerById.get(slot.playerId);
     if (!p) return `#${slot.playerId}`;
 
-    return `${p.name} (#${p.number})`;
+    return `${displayName(p.name)} (#${p.number})`;
   }
 
   function PlayerPill({ slot }: { slot: LineupSlot }) {
@@ -227,18 +233,13 @@ export function LineupPitchPreview({
 
         <div className="pillTitle">
           {label}
+          {r != null ? ` • ${r.toFixed(1)}` : ""}
           {slot.isCaptain ? " (C)" : ""}
         </div>
 
         {!isEmpty && (
           <div className="pillSub">
             {pos || "—"}
-            {r != null ? (
-              <>
-                {" "}
-                • ⭐ <span className="pillRating">{r}</span>
-              </>
-            ) : null}
           </div>
         )}
 

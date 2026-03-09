@@ -1,12 +1,13 @@
 import { useMemo } from "react";
 import type { Player } from "../models/Players";
 import type { Formation } from "../models/Formation";
-import type { LineupSlot } from "../models/Lineup";
+import type { LineupSlot, PlayerMatchStat } from "../models/Lineup";
 
 type Props = {
   formation: Formation;
   slots: LineupSlot[];
   players: Player[];
+  playerStats?: PlayerMatchStat[];
 };
 
 function n0(v: unknown): number {
@@ -14,7 +15,7 @@ function n0(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-export function LineupStatsDashboard({ formation, slots, players }: Props) {
+export function LineupStatsDashboard({ formation, slots, players, playerStats }: Props) {
   const playerById = useMemo(() => new Map(players.map((p) => [p.id, p])), [players]);
 
   const stats = useMemo(() => {
@@ -26,20 +27,32 @@ export function LineupStatsDashboard({ formation, slots, players }: Props) {
         acc.assists += Math.max(0, Math.floor(n0((s as any).assists)));
         acc.yellow += Math.max(0, Math.floor(n0((s as any).yellowCards)));
         acc.red += Math.max(0, Math.floor(n0((s as any).redCards)));
+
         const r = typeof s.rating === "number" ? s.rating : null;
         if (r != null) {
           acc.ratingSum += r;
           acc.ratingCount += 1;
         }
+
         return acc;
       },
       { goals: 0, assists: 0, yellow: 0, red: 0, ratingSum: 0, ratingCount: 0 }
     );
 
-    const avgRating =
-      totals.ratingCount > 0 ? Math.round((totals.ratingSum / totals.ratingCount) * 10) / 10 : null;
+    let ratingSum = totals.ratingSum;
+    let ratingCount = totals.ratingCount;
 
-    // leaders
+    for (const s of playerStats ?? []) {
+      const r = typeof s.rating === "number" ? s.rating : null;
+      if (r != null) {
+        ratingSum += r;
+        ratingCount += 1;
+      }
+    }
+
+    const avgRating =
+      ratingCount > 0 ? Math.round((ratingSum / ratingCount) * 10) / 10 : null;
+
     const byMetric = (key: "goals" | "assists" | "yellowCards" | "redCards") => {
       let best: { playerId: number; value: number } | null = null;
 
@@ -59,7 +72,7 @@ export function LineupStatsDashboard({ formation, slots, players }: Props) {
     const topRed = byMetric("redCards");
 
     return { assignedCount: assigned.length, totals, avgRating, topGoals, topAssists, topYellow, topRed };
-  }, [slots]);
+  }, [slots, playerStats]);
 
   function nameFor(playerId: number) {
     const p = playerById.get(playerId);
@@ -104,7 +117,6 @@ export function LineupStatsDashboard({ formation, slots, players }: Props) {
           border: "1px solid rgba(0,0,0,0.12)",
         }}
       >
-        {/* Totals */}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 14, alignItems: "center" }}>
           <div>
             <strong>Players assigned:</strong> {stats.assignedCount}/{(formation.slots ?? []).length}
@@ -128,7 +140,6 @@ export function LineupStatsDashboard({ formation, slots, players }: Props) {
           </div>
         </div>
 
-        {/* Leaders */}
         <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
           <Leader title="Top scorer" icon="⚽" entry={stats.topGoals} />
           <Leader title="Top assister" icon="🅰️" entry={stats.topAssists} />
