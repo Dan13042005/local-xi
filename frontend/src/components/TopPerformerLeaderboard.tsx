@@ -3,7 +3,6 @@ import { getMatches } from "../api/matchesAPI";
 import { getLineupForMatch } from "../api/lineupsAPI";
 import { getPlayers } from "../api/playersAPI";
 
-
 type Aggregated = {
   playerId: number;
   name: string;
@@ -26,64 +25,92 @@ export function TopPerformerLeaderboard() {
     async function load() {
       setLoading(true);
 
-      const [matches, players] = await Promise.all([
-        getMatches(),
-        getPlayers(),
-      ]);
+      const [matches, players] = await Promise.all([getMatches(), getPlayers()]);
 
-      const playerMap = new Map(players.map(p => [p.id, p]));
-
+      const playerMap = new Map(players.map((p) => [p.id, p]));
       const agg = new Map<number, Aggregated>();
+
+      function ensureRow(playerId: number): Aggregated | null {
+        const p = playerMap.get(playerId);
+        if (!p) return null;
+
+        if (!agg.has(playerId)) {
+          agg.set(playerId, {
+            playerId,
+            name: p.name,
+            number: p.number,
+            goals: 0,
+            assists: 0,
+            yellowCards: 0,
+            redCards: 0,
+            totalRating: 0,
+            ratingCount: 0,
+            potm: 0,
+          });
+        }
+
+        return agg.get(playerId)!;
+      }
 
       for (const match of matches) {
         const lineup = await getLineupForMatch(match.id);
         if (!lineup) continue;
 
-        // Player stats
-        for (const stat of lineup.playerStats ?? []) {
-          const p = playerMap.get(stat.playerId);
-          if (!p) continue;
+        // Ratings for this match:
+        // - starters usually come from slots
+        // - bench/sub ratings come from playerStats
+        // Use one rating per player per match.
+        const matchRatings = new Map<number, number>();
 
-          if (!agg.has(p.id)) {
-            agg.set(p.id, {
-              playerId: p.id,
-              name: p.name,
-              number: p.number,
-              goals: 0,
-              assists: 0,
-              yellowCards: 0,
-              redCards: 0,
-              totalRating: 0,
-              ratingCount: 0,
-              potm: 0,
-            });
+        // Ratings from slots
+        for (const slot of lineup.slots ?? []) {
+          if (slot.playerId == null) continue;
+
+          ensureRow(slot.playerId);
+
+          if (typeof slot.rating === "number") {
+            matchRatings.set(slot.playerId, slot.rating);
           }
+        }
 
-          const row = agg.get(p.id)!;
+        // Stats + optional ratings from playerStats
+        for (const stat of lineup.playerStats ?? []) {
+          const row = ensureRow(stat.playerId);
+          if (!row) continue;
+
           row.goals += stat.goals ?? 0;
           row.assists += stat.assists ?? 0;
           row.yellowCards += stat.yellowCards ?? 0;
           row.redCards += stat.redCards ?? 0;
+
+          if (typeof stat.rating === "number") {
+            matchRatings.set(stat.playerId, stat.rating);
+          }
         }
 
-        // Ratings + POTM from slots
-        const bestSlot = lineup.slots?.reduce((best, s) => {
-          if (s.rating == null) return best;
-          if (!best || s.rating > best.rating!) return s;
-          return best;
-        }, null as any);
-
-        for (const slot of lineup.slots ?? []) {
-          if (!slot.playerId) continue;
-          const row = agg.get(slot.playerId);
+        // Add this match's ratings to season totals
+        for (const [playerId, rating] of matchRatings.entries()) {
+          const row = ensureRow(playerId);
           if (!row) continue;
 
-          if (slot.rating != null) {
-            row.totalRating += slot.rating;
-            row.ratingCount += 1;
-          }
+          row.totalRating += rating;
+          row.ratingCount += 1;
+        }
 
-          if (bestSlot && slot.slotId === bestSlot.slotId) {
+        // POTM = single highest rating in this match
+        let bestPlayerId: number | null = null;
+        let bestRating: number | null = null;
+
+        for (const [playerId, rating] of matchRatings.entries()) {
+          if (bestRating == null || rating > bestRating) {
+            bestRating = rating;
+            bestPlayerId = playerId;
+          }
+        }
+
+        if (bestPlayerId != null) {
+          const row = ensureRow(bestPlayerId);
+          if (row) {
             row.potm += 1;
           }
         }
@@ -122,19 +149,17 @@ export function TopPerformerLeaderboard() {
           </tr>
         </thead>
         <tbody>
-          {sorted.map(r => (
+          {sorted.map((r) => (
             <tr key={r.playerId}>
-              <td>#{r.number} {r.name}</td>
+              <td>
+                #{r.number} {r.name}
+              </td>
               <td>{r.goals}</td>
               <td>{r.assists}</td>
               <td>{r.potm}</td>
               <td>{r.yellowCards}</td>
               <td>{r.redCards}</td>
-              <td>
-                {r.ratingCount > 0
-                  ? (r.totalRating / r.ratingCount).toFixed(2)
-                  : "—"}
-              </td>
+              <td>{r.ratingCount > 0 ? (r.totalRating / r.ratingCount).toFixed(2) : "—"}</td>
             </tr>
           ))}
         </tbody>
