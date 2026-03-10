@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { getMatches } from "../api/matchesAPI";
 import { getLineupForMatch } from "../api/lineupsAPI";
 import { getPlayers } from "../api/playersAPI";
+import "../styles/tables.css";
 
 type Aggregated = {
   playerId: number;
@@ -16,10 +17,19 @@ type Aggregated = {
   potm: number;
 };
 
+type SortOption =
+  | "goals"
+  | "assists"
+  | "potm"
+  | "yellowCards"
+  | "redCards"
+  | "avgRating"
+  | "ratingCount";
+
 export function TopPerformerLeaderboard() {
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<Aggregated[]>([]);
-  const [sortKey, setSortKey] = useState<keyof Aggregated>("goals");
+  const [sortKey, setSortKey] = useState<SortOption>("goals");
 
   useEffect(() => {
     async function load() {
@@ -56,13 +66,8 @@ export function TopPerformerLeaderboard() {
         const lineup = await getLineupForMatch(match.id);
         if (!lineup) continue;
 
-        // Ratings for this match:
-        // - starters usually come from slots
-        // - bench/sub ratings come from playerStats
-        // Use one rating per player per match.
         const matchRatings = new Map<number, number>();
 
-        // Ratings from slots
         for (const slot of lineup.slots ?? []) {
           if (slot.playerId == null) continue;
 
@@ -73,7 +78,6 @@ export function TopPerformerLeaderboard() {
           }
         }
 
-        // Stats + optional ratings from playerStats
         for (const stat of lineup.playerStats ?? []) {
           const row = ensureRow(stat.playerId);
           if (!row) continue;
@@ -88,7 +92,6 @@ export function TopPerformerLeaderboard() {
           }
         }
 
-        // Add this match's ratings to season totals
         for (const [playerId, rating] of matchRatings.entries()) {
           const row = ensureRow(playerId);
           if (!row) continue;
@@ -97,7 +100,6 @@ export function TopPerformerLeaderboard() {
           row.ratingCount += 1;
         }
 
-        // POTM = single highest rating in this match
         let bestPlayerId: number | null = null;
         let bestRating: number | null = null;
 
@@ -110,9 +112,7 @@ export function TopPerformerLeaderboard() {
 
         if (bestPlayerId != null) {
           const row = ensureRow(bestPlayerId);
-          if (row) {
-            row.potm += 1;
-          }
+          if (row) row.potm += 1;
         }
       }
 
@@ -125,45 +125,120 @@ export function TopPerformerLeaderboard() {
 
   const sorted = useMemo(() => {
     return [...rows].sort((a, b) => {
-      if (sortKey === "name") return a.name.localeCompare(b.name);
+      if (sortKey === "avgRating") {
+        const aAvg = a.ratingCount > 0 ? a.totalRating / a.ratingCount : -1;
+        const bAvg = b.ratingCount > 0 ? b.totalRating / b.ratingCount : -1;
+        return bAvg - aAvg;
+      }
+
       return (b[sortKey] as number) - (a[sortKey] as number);
     });
   }, [rows, sortKey]);
 
-  if (loading) return <div style={{ padding: 20 }}>Loading leaderboard…</div>;
+  if (loading) return <div className="leaderboard-loading">Loading leaderboard…</div>;
 
   return (
-    <div style={{ marginTop: 20 }}>
-      <h2>Top Performer Leaderboard</h2>
+    <div className="leaderboard-container">
+      <div className="leaderboard-header">
+        <h2>Top Performer Leaderboard</h2>
 
-      <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 12 }}>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th onClick={() => setSortKey("goals")}>Goals</th>
-            <th onClick={() => setSortKey("assists")}>Assists</th>
-            <th onClick={() => setSortKey("potm")}>POTM</th>
-            <th onClick={() => setSortKey("yellowCards")}>YC</th>
-            <th onClick={() => setSortKey("redCards")}>RC</th>
-            <th>Avg Rating</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map((r) => (
-            <tr key={r.playerId}>
-              <td>
-                #{r.number} {r.name}
-              </td>
-              <td>{r.goals}</td>
-              <td>{r.assists}</td>
-              <td>{r.potm}</td>
-              <td>{r.yellowCards}</td>
-              <td>{r.redCards}</td>
-              <td>{r.ratingCount > 0 ? (r.totalRating / r.ratingCount).toFixed(2) : "—"}</td>
+        <div className="leaderboard-sort">
+          <label>Sort by</label>
+
+          <select
+            value={sortKey}
+            onChange={(e) => setSortKey(e.target.value as SortOption)}
+          >
+            <option value="goals">Goals</option>
+            <option value="assists">Assists</option>
+            <option value="potm">POTM</option>
+            <option value="yellowCards">Yellow Cards</option>
+            <option value="redCards">Red Cards</option>
+            <option value="avgRating">Average Rating</option>
+            <option value="ratingCount">Appearances</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="leaderboard-card">
+        <table className="leaderboard">
+          <colgroup>
+            <col style={{ width: "40%" }} />
+            <col style={{ width: "10%" }} />
+            <col style={{ width: "9%" }} />
+            <col style={{ width: "9%" }} />
+            <col style={{ width: "9%" }} />
+            <col style={{ width: "7%" }} />
+            <col style={{ width: "7%" }} />
+            <col style={{ width: "9%" }} />
+          </colgroup>
+
+          <thead>
+            <tr>
+              <th className="th-left">Player</th>
+              <th>Apps</th>
+              <th>Goals</th>
+              <th>Assists</th>
+              <th>POTM</th>
+              <th>YC</th>
+              <th>RC</th>
+              <th>Avg</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+
+          <tbody>
+            {sorted.map((r) => {
+              const avgRating =
+                r.ratingCount > 0 ? r.totalRating / r.ratingCount : null;
+
+              return (
+                <tr key={r.playerId}>
+                  <td className="leaderboard-player">
+                    <div className="leaderboard-number">#{r.number}</div>
+                    <span title={r.name}>{r.name}</span>
+                  </td>
+
+                  <td>{r.ratingCount}</td>
+                  <td>{r.goals}</td>
+                  <td>{r.assists}</td>
+                  <td>{r.potm}</td>
+                  <td>{r.yellowCards}</td>
+                  <td>{r.redCards}</td>
+
+                  <td>
+                    {avgRating == null ? (
+                      "—"
+                    ) : (
+                      <span
+                        className={`rating rating-${
+                          avgRating < 5
+                            ? "bad"
+                            : avgRating < 7
+                            ? "mid"
+                            : avgRating < 8
+                            ? "good"
+                            : "elite"
+                        }`}
+                      >
+                        {avgRating.toFixed(1)}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+
+            {sorted.length === 0 && (
+              <tr>
+                <td colSpan={8} className="leaderboard-empty">
+                  No player stats available yet.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
+
