@@ -155,28 +155,28 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
   }, [players, selectedPlayerIds]);
 
   const slotsForDisplay = useMemo(() => {
-  return slots.map((s) => {
-    if (s.playerId == null) {
+    return slots.map((s) => {
+      if (s.playerId == null) {
+        return {
+          ...s,
+          goals: null,
+          assists: null,
+          yellowCards: null,
+          redCards: null,
+        };
+      }
+
+      const st = playerStatsById[s.playerId] ?? emptyPlayerStats();
+
       return {
         ...s,
-        goals: null,
-        assists: null,
-        yellowCards: null,
-        redCards: null,
+        goals: st.goals,
+        assists: st.assists,
+        yellowCards: st.yellowCards,
+        redCards: st.redCards,
       };
-    }
-
-    const st = playerStatsById[s.playerId] ?? emptyPlayerStats();
-
-    return {
-      ...s,
-      goals: st.goals,
-      assists: st.assists,
-      yellowCards: st.yellowCards,
-      redCards: st.redCards,
-    };
-  });
-}, [slots, playerStatsById]);
+    });
+  }, [slots, playerStatsById]);
 
   useEffect(() => {
     let cancelled = false;
@@ -496,9 +496,9 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
   };
 
   return (
-    <div className="card" style={{ padding: 12, marginTop: 12 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-        <div>
+    <div className="card" style={{ padding: "clamp(10px, 2vw, 16px)", marginTop: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}>
+        <div style={{ flex: "1 1 320px", minWidth: 0 }}>
           <strong>Lineup for match #{matchId}</strong>
           <div style={{ opacity: 0.8, fontSize: 13, marginTop: 4 }}>
             Bench click → pitch click assigns. Pitch click → pitch click swaps. Drag bench player onto a pitch pill to
@@ -518,12 +518,13 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
       ) : null}
 
       <div style={{ marginTop: 12, display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
-        <label style={{ width: 320 }}>
+        <label style={{ width: "min(100%, 320px)" }}>
           Formation
           <select
             value={formationId ?? ""}
             onChange={(e) => changeFormation(Number(e.target.value))}
             disabled={saving || formations.length === 0}
+            style={{ width: "100%" }}
           >
             {formations.length === 0 ? (
               <option value="">No formations found</option>
@@ -581,7 +582,8 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
                         flexDirection: "column",
                         alignItems: "center",
                         gap: 6,
-                        minWidth: 120,
+                        minWidth: 110,
+                        flex: "0 1 auto",
                       }}
                     >
                       <button
@@ -611,6 +613,7 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
                           fontWeight: 800,
                           whiteSpace: "nowrap",
                           minWidth: 110,
+                          maxWidth: "100%",
                           textAlign: "center",
                         }}
                         title={`${p.name} (${p.positions.join(", ")})`}
@@ -645,123 +648,125 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
             )}
           </div>
 
-          <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
-            {selectedFormation.slots.map((slotMeta) => {
-              const slot = slots.find((s) => s.slotId === slotMeta.slotId);
-              if (!slot) return null;
+          <div style={{ marginTop: 14, overflowX: "auto" }}>
+            <div style={{ display: "grid", gap: 10, minWidth: 760 }}>
+              {selectedFormation.slots.map((slotMeta) => {
+                const slot = slots.find((s) => s.slotId === slotMeta.slotId);
+                if (!slot) return null;
 
-              const stats =
-                slot.playerId != null ? playerStatsById[slot.playerId] ?? emptyPlayerStats() : emptyPlayerStats();
+                const stats =
+                  slot.playerId != null ? playerStatsById[slot.playerId] ?? emptyPlayerStats() : emptyPlayerStats();
 
-              return (
-                <div
-                  key={slotMeta.slotId}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "150px 1fr 90px 120px 70px 70px 80px 80px",
-                    gap: 10,
-                    alignItems: "center",
-                  }}
-                >
-                  <div style={{ fontWeight: 700 }}>
-                    {slotMeta.position} <span style={{ opacity: 0.6, fontWeight: 400 }}>({slotMeta.slotId})</span>
-                  </div>
-
-                  <select
-                    value={slot.playerId ?? ""}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setPlayer(slotMeta.slotId, v === "" ? null : Number(v));
+                return (
+                  <div
+                    key={slotMeta.slotId}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "150px minmax(180px, 1fr) 90px 120px 70px 70px 80px 80px",
+                      gap: 10,
+                      alignItems: "center",
                     }}
-                    disabled={saving}
                   >
-                    <option value="">— Unassigned —</option>
-                    {players.map((p) => {
-                      const takenByOtherSlot = p.id !== slot.playerId && selectedPlayerIds.has(p.id);
-                      return (
-                        <option key={p.id} value={p.id} disabled={takenByOtherSlot}>
-                          #{p.number} {p.name}
-                        </option>
-                      );
-                    })}
-                  </select>
+                    <div style={{ fontWeight: 700 }}>
+                      {slotMeta.position} <span style={{ opacity: 0.6, fontWeight: 400 }}>({slotMeta.slotId})</span>
+                    </div>
 
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    max="10"
-                    placeholder="0–10"
-                    value={slot.rating ?? ""}
-                    onChange={(e) => setRating(slotMeta.slotId, e.target.value)}
-                    disabled={saving}
-                    style={smallNumStyle}
-                  />
-
-                  <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <input
-                      type="checkbox"
-                      checked={slot.isCaptain}
-                      onChange={() => setCaptain(slotMeta.slotId)}
+                    <select
+                      value={slot.playerId ?? ""}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setPlayer(slotMeta.slotId, v === "" ? null : Number(v));
+                      }}
                       disabled={saving}
+                    >
+                      <option value="">— Unassigned —</option>
+                      {players.map((p) => {
+                        const takenByOtherSlot = p.id !== slot.playerId && selectedPlayerIds.has(p.id);
+                        return (
+                          <option key={p.id} value={p.id} disabled={takenByOtherSlot}>
+                            #{p.number} {p.name}
+                          </option>
+                        );
+                      })}
+                    </select>
+
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      max="10"
+                      placeholder="0–10"
+                      value={slot.rating ?? ""}
+                      onChange={(e) => setRating(slotMeta.slotId, e.target.value)}
+                      disabled={saving}
+                      style={smallNumStyle}
                     />
-                    Captain
-                  </label>
 
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    min={0}
-                    step={1}
-                    placeholder="G"
-                    value={stats.goals ?? ""}
-                    onChange={(e) => setStatForPlayer(slot.playerId ?? null, "goals", e.target.value)}
-                    disabled={saving || slot.playerId == null}
-                    style={smallNumStyle}
-                    title="Goals"
-                  />
+                    <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <input
+                        type="checkbox"
+                        checked={slot.isCaptain}
+                        onChange={() => setCaptain(slotMeta.slotId)}
+                        disabled={saving}
+                      />
+                      Captain
+                    </label>
 
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    min={0}
-                    step={1}
-                    placeholder="A"
-                    value={stats.assists ?? ""}
-                    onChange={(e) => setStatForPlayer(slot.playerId ?? null, "assists", e.target.value)}
-                    disabled={saving || slot.playerId == null}
-                    style={smallNumStyle}
-                    title="Assists"
-                  />
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      step={1}
+                      placeholder="G"
+                      value={stats.goals ?? ""}
+                      onChange={(e) => setStatForPlayer(slot.playerId ?? null, "goals", e.target.value)}
+                      disabled={saving || slot.playerId == null}
+                      style={smallNumStyle}
+                      title="Goals"
+                    />
 
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    min={0}
-                    step={1}
-                    placeholder="YC"
-                    value={stats.yellowCards ?? ""}
-                    onChange={(e) => setStatForPlayer(slot.playerId ?? null, "yellowCards", e.target.value)}
-                    disabled={saving || slot.playerId == null}
-                    style={smallNumStyle}
-                    title="Yellow cards"
-                  />
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      step={1}
+                      placeholder="A"
+                      value={stats.assists ?? ""}
+                      onChange={(e) => setStatForPlayer(slot.playerId ?? null, "assists", e.target.value)}
+                      disabled={saving || slot.playerId == null}
+                      style={smallNumStyle}
+                      title="Assists"
+                    />
 
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    min={0}
-                    step={1}
-                    placeholder="RC"
-                    value={stats.redCards ?? ""}
-                    onChange={(e) => setStatForPlayer(slot.playerId ?? null, "redCards", e.target.value)}
-                    disabled={saving || slot.playerId == null}
-                    style={smallNumStyle}
-                    title="Red cards"
-                  />
-                </div>
-              );
-            })}
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      step={1}
+                      placeholder="YC"
+                      value={stats.yellowCards ?? ""}
+                      onChange={(e) => setStatForPlayer(slot.playerId ?? null, "yellowCards", e.target.value)}
+                      disabled={saving || slot.playerId == null}
+                      style={smallNumStyle}
+                      title="Yellow cards"
+                    />
+
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      step={1}
+                      placeholder="RC"
+                      value={stats.redCards ?? ""}
+                      onChange={(e) => setStatForPlayer(slot.playerId ?? null, "redCards", e.target.value)}
+                      disabled={saving || slot.playerId == null}
+                      style={smallNumStyle}
+                      title="Red cards"
+                    />
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </>
       )}

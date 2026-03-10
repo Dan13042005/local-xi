@@ -179,14 +179,20 @@
 ════════════════════════════════════════ */
 
 .pitchPill {
-  border-radius: 999px;
-  padding: 10px 12px;
+  border-radius: 18px;
+  padding: 12px 12px 10px;
   border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(15, 22, 33, 0.6);
+  background: rgba(15, 22, 33, 0.68);
   color: var(--text);
   text-align: center;
   position: relative;
   user-select: none;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
 
   box-shadow: 0 10px 22px rgba(0, 0, 0, 0.35);
 
@@ -215,32 +221,49 @@
 }
 
 .pitchPill.potm {
-  border-color: rgba(245, 158, 11, 0.55);
+  border-color: rgba(245, 158, 11, 0.6);
+  box-shadow:
+    0 0 0 3px rgba(245, 158, 11, 0.12),
+    0 14px 28px rgba(0, 0, 0, 0.45);
 }
 
 .potmBadge {
   position: absolute;
-  top: -10px;
-  right: 12px;
+  top: -14px;
+  left: 50%;
+  transform: translateX(-50%);
   border-radius: 999px;
-  padding: 2px 10px;
-  font-size: 12px;
+  padding: 3px 10px;
+  font-size: 11px;
   font-weight: 800;
-  border: 1px solid rgba(245, 158, 11, 0.55);
-  background: rgba(245, 158, 11, 0.14);
-  color: rgba(255, 255, 255, 0.92);
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  border: 1px solid rgba(245, 158, 11, 0.58);
+  background: rgba(56, 40, 8, 0.95);
+  color: rgba(255, 234, 179, 0.98);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.28);
+  z-index: 2;
 }
 
 .pillTitle {
   font-weight: 800;
-  font-size: 14px;
+  font-size: 13px;
+  line-height: 1.15;
   color: var(--text);
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: center;
 }
 
 .pillSub {
-  margin-top: 2px;
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.75);
+  font-size: 11px;
+  line-height: 1.1;
+  color: rgba(255, 255, 255, 0.76);
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: center;
 }
 
 .pillRating {
@@ -249,10 +272,193 @@
 }
 
 .pillStats {
-  margin-top: 4px;
-  font-size: 12px;
+  margin-top: 2px;
+  font-size: 11px;
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
-  gap: 10px;
+  gap: 8px;
   color: rgba(255, 255, 255, 0.85);
+  max-width: 100%;
+}
+/* ════════════════════════════════════════
+   RATING COLOURS
+════════════════════════════════════════ */
+
+.pillRating {
+  font-weight: 800;
+}
+
+.pitch .pillRating.ratingRed,
+.pitchContent .pillRating.ratingRed,
+.pitch button .pillRating.ratingRed,
+.pitchContent button .pillRating.ratingRed {
+  color: #ef4444 !important;
+}
+
+.pitch .pillRating.ratingOrange,
+.pitchContent .pillRating.ratingOrange,
+.pitch button .pillRating.ratingOrange,
+.pitchContent button .pillRating.ratingOrange {
+  color: #f97316 !important;
+}
+
+.pitch .pillRating.ratingLightGreen,
+.pitchContent .pillRating.ratingLightGreen,
+.pitch button .pillRating.ratingLightGreen,
+.pitchContent button .pillRating.ratingLightGreen {
+  color: #86efac !important;
+}
+
+.pitch .pillRating.ratingDarkGreen,
+.pitchContent .pillRating.ratingDarkGreen,
+.pitch button .pillRating.ratingDarkGreen,
+.pitchContent button .pillRating.ratingDarkGreen {
+  color: #22c55e !important;
+}
+/* ════════════════════════════════════════
+   HIGH PERFORMANCE GLOW
+════════════════════════════════════════ */
+
+.pitch .pitchPill.glowLight,
+.pitchContent .pitchPill.glowLight,
+.pitch button.pitchPill.glowLight,
+.pitchContent button.pitchPill.glowLight {
+  box-shadow:
+    0 0 0 1px rgba(34, 197, 94, 0.25),
+    0 0 12px rgba(34, 197, 94, 0.35),
+    0 10px 22px rgba(0, 0, 0, 0.35) !important;
+}
+
+.pitch .pitchPill.glowStrong,
+.pitchContent .pitchPill.glowStrong,
+.pitch button.pitchPill.glowStrong,
+.pitchContent button.pitchPill.glowStrong {
+  box-shadow:
+    0 0 0 1px rgba(34, 197, 94, 0.4),
+    0 0 18px rgba(34, 197, 94, 0.65),
+    0 0 35px rgba(34, 197, 94, 0.35),
+    0 10px 22px rgba(0, 0, 0, 0.35) !important;
+}
+/* ════════════════════════════════════════
+   RESPONSIVE LAYOUT
+════════════════════════════════════════ */
+
+@media (max-width: 1024px) {
+  .pitchContent {
+    padding: 16px 12px;
+  }
+
+  .potmBadge {
+    font-size: 10px;
+    padding: 3px 8px;
+  }
+}
+
+@media (max-width: 768px) {
+  .pitch {
+    border-radius: 16px;
+  }
+
+  .pitch::after {
+    inset: 12px;
+    border-radius: 10px;
+    background:
+      linear-gradient(
+        180deg,
+        transparent 49.7%,
+        rgba(255, 255, 255, 0.14) 50%,
+        transparent 50.3%
+      ),
+      radial-gradient(
+        circle at 50% 50%,
+        transparent 0 48px,
+        rgba(255, 255, 255, 0.14) 48px 49px,
+        transparent 49px
+      ),
+      linear-gradient(rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.14))
+        center top / 160px 64px no-repeat,
+      linear-gradient(rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.14))
+        center bottom / 160px 64px no-repeat;
+  }
+
+  .pitchContent {
+    padding: 12px 10px;
+  }
+
+  .pitchPill {
+    border-radius: 14px;
+    padding: 8px 8px 7px;
+    gap: 2px;
+  }
+
+  .pillTitle {
+    font-size: 11px;
+    line-height: 1.1;
+  }
+
+  .pillSub {
+    font-size: 10px;
+  }
+
+  .pillStats {
+    font-size: 10px;
+    gap: 6px;
+  }
+
+  .potmBadge {
+    top: -12px;
+    font-size: 9px;
+    padding: 2px 7px;
+  }
+}
+
+@media (max-width: 480px) {
+  .pitch::after {
+    inset: 9px;
+    background:
+      linear-gradient(
+        180deg,
+        transparent 49.7%,
+        rgba(255, 255, 255, 0.14) 50%,
+        transparent 50.3%
+      ),
+      radial-gradient(
+        circle at 50% 50%,
+        transparent 0 34px,
+        rgba(255, 255, 255, 0.14) 34px 35px,
+        transparent 35px
+      ),
+      linear-gradient(rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.14))
+        center top / 118px 48px no-repeat,
+      linear-gradient(rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.14))
+        center bottom / 118px 48px no-repeat;
+  }
+
+  .pitchContent {
+    padding: 10px 8px;
+  }
+
+  .pitchPill {
+    border-radius: 12px;
+    padding: 6px 6px 5px;
+  }
+
+  .pillTitle {
+    font-size: 10px;
+  }
+
+  .pillSub {
+    font-size: 9px;
+  }
+
+  .pillStats {
+    font-size: 9px;
+    gap: 4px;
+  }
+
+  .potmBadge {
+    font-size: 8px;
+    padding: 2px 6px;
+  }
 }

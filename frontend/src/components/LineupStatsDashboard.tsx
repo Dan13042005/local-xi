@@ -125,18 +125,22 @@ export function LineupStatsDashboard({ formation, slots, players, playerStats }:
           <div title="Goals">
             <strong>⚽</strong> {stats.totals.goals}
           </div>
+
           <div title="Assists">
             <strong>🅰️</strong> {stats.totals.assists}
           </div>
+
           <div title="Yellow cards">
             <strong>🟨</strong> {stats.totals.yellow}
           </div>
+
           <div title="Red cards">
             <strong>🟥</strong> {stats.totals.red}
           </div>
 
           <div>
-            <strong>Avg rating:</strong> {stats.avgRating == null ? "—" : stats.avgRating}
+            <strong>Avg rating:</strong>{" "}
+            {stats.avgRating == null ? "—" : stats.avgRating.toFixed(1)}
           </div>
         </div>
 
@@ -150,4 +154,3 @@ export function LineupStatsDashboard({ formation, slots, players, playerStats }:
     </div>
   );
 }
-

@@ -55,6 +55,14 @@ function displayName(name: string): string {
   return parts[parts.length - 1];
 }
 
+function ratingClass(rating: number | null): string {
+  if (rating == null) return "";
+  if (rating < 5) return "ratingRed";
+  if (rating < 7) return "ratingOrange";
+  if (rating < 8) return "ratingLightGreen";
+  return "ratingDarkGreen";
+}
+
 type Props = {
   formation: Formation;
   slots: LineupSlot[];
@@ -170,8 +178,16 @@ export function LineupPitchPreview({
     const draggableEnabled = !!onSwapSlots;
     const isEmpty = slot.playerId == null;
 
+    let glowClass = "";
+
+    if (r != null) {
+      if (r >= 8) glowClass = " glowStrong";
+      else if (r >= 7) glowClass = " glowLight";
+    }
+
     const className =
       "pitchPill" +
+      glowClass +
       (isSelected ? " selected" : "") +
       (isPotm ? " potm" : "") +
       (isEmpty ? " empty" : "");
@@ -217,7 +233,8 @@ export function LineupPitchPreview({
           }
         }}
         style={{
-          width: 138,
+          width: "clamp(96px, 18vw, 168px)",
+          minHeight: "clamp(52px, 8vw, 62px)",
           cursor:
             onSlotClick || onSwapSlots || onDropPlayerToSlot ? "pointer" : "default",
         }}
@@ -229,16 +246,21 @@ export function LineupPitchPreview({
             : label
         }
       >
-        {isPotm ? <div className="potmBadge">🔥 POTM</div> : null}
+        {isPotm ? <div className="potmBadge">🏆 Player of the Match</div> : null}
 
         <div className="pillTitle">
           {label}
-          {r != null ? ` • ${r.toFixed(1)}` : ""}
           {slot.isCaptain ? " (C)" : ""}
         </div>
 
         {!isEmpty && (
           <div className="pillSub">
+            {r != null && (
+              <span className={`pillRating ${ratingClass(r)}`}>
+                {r.toFixed(1)}
+              </span>
+            )}
+            {r != null ? " • " : ""}
             {pos || "—"}
           </div>
         )}
@@ -266,7 +288,7 @@ export function LineupPitchPreview({
           position: "relative",
           width: "100%",
           maxWidth: 720,
-          height: 570,
+          aspectRatio: "720 / 570",
           margin: "0 auto",
         }}
       >
