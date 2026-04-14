@@ -37,6 +37,8 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/**").hasAnyRole("PLAYER", "MANAGER")
 
                 // write access only for managers
+                .requestMatchers(HttpMethod.GET, "/api/**").hasAnyRole("PLAYER", "MANAGER")
+                .requestMatchers(HttpMethod.POST, "/api/lineups/summaries").hasAnyRole("PLAYER", "MANAGER")
                 .requestMatchers(HttpMethod.POST, "/api/**").hasRole("MANAGER")
                 .requestMatchers(HttpMethod.PUT, "/api/**").hasRole("MANAGER")
                 .requestMatchers(HttpMethod.DELETE, "/api/**").hasRole("MANAGER")

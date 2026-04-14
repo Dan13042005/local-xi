@@ -9,7 +9,7 @@ type ApiFetchOptions = RequestInit & {
 };
 
 function authFailed(status: number) {
-  return status === 401 || status === 403;
+  return status === 401;
 }
 
 export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): Promise<T> {

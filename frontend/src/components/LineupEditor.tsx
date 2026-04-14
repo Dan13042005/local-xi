@@ -487,7 +487,6 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
       </div>
     );
   }
-
   const smallNumStyle: React.CSSProperties = {
     width: "100%",
     borderRadius: 8,
