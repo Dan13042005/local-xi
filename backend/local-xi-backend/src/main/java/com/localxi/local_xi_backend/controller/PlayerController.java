@@ -4,8 +4,8 @@ import com.localxi.local_xi_backend.model.Player;
 import com.localxi.local_xi_backend.repository.PlayerRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.core.context.SecurityContextHolder;
 
-import java.util.Comparator;
 import java.util.List;
 
 @CrossOrigin(
@@ -25,9 +25,7 @@ public class PlayerController {
 
     @GetMapping
     public List<Player> getAll() {
-        List<Player> out = repo.findAll();
-        out.sort(Comparator.comparingInt(Player::getNumber));
-        return out;
+        return repo.findAllByTeamIdOrderByNumber(getTeamId());
     }
 
     @PostMapping
@@ -41,7 +39,7 @@ public class PlayerController {
         if (payload.getNumber() < 1 || payload.getNumber() > 99) {
             return ResponseEntity.badRequest().body("number must be 1–99");
         }
-        if (repo.existsByNumber(payload.getNumber())) {
+        if (repo.existsByNumberAndTeamId(payload.getNumber(), getTeamId())) {
             return ResponseEntity.badRequest().body("shirt number already exists");
         }
 
@@ -49,11 +47,11 @@ public class PlayerController {
         p.setName(payload.getName().trim());
         p.setPositions(payload.getPositions());
         p.setNumber(payload.getNumber());
+        p.setTeamId(getTeamId());
 
         return ResponseEntity.ok(repo.save(p));
     }
 
-    // DELETE /api/players   body: [1,2,3]
     @DeleteMapping
     public ResponseEntity<?> deleteMany(@RequestBody List<Long> ids) {
         if (ids == null || ids.isEmpty()) {
@@ -65,6 +63,12 @@ public class PlayerController {
             repo.deleteAll(existing);
         }
         return ResponseEntity.ok().build();
+    }
+
+    private Long getTeamId() {
+        String principal = (String) SecurityContextHolder
+            .getContext().getAuthentication().getPrincipal();
+        return Long.valueOf(principal.split(":")[1]);
     }
 }
 

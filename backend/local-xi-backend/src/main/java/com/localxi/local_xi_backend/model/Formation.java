@@ -15,6 +15,9 @@ public class Formation {
     private String name;
     private String shape; // e.g. "4-4-2"
 
+    @Column(name = "team_id", nullable = false)
+    private Long teamId;
+
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "formation_slots", joinColumns = @JoinColumn(name = "formation_id"))
     private List<FormationSlot> slots = new ArrayList<>();
@@ -37,4 +40,7 @@ public class Formation {
 
     public List<FormationSlot> getSlots() { return slots; }
     public void setSlots(List<FormationSlot> slots) { this.slots = slots; }
+
+    public Long getTeamId() { return teamId; }
+    public void setTeamId(Long teamId) { this.teamId = teamId; }
 }

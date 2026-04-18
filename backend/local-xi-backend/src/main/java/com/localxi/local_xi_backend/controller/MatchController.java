@@ -3,6 +3,7 @@ package com.localxi.local_xi_backend.controller;
 import com.localxi.local_xi_backend.model.Match;
 import com.localxi.local_xi_backend.repository.MatchRepository;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -25,7 +26,7 @@ public class MatchController {
 
     @GetMapping
     public List<Match> getMatches() {
-        return repo.findAll();
+        return repo.findAllByTeamId(getTeamId());
     }
 
     @PostMapping
@@ -43,17 +44,17 @@ public class MatchController {
             return ResponseEntity.badRequest().body("Goals Against must be 0 or more");
         }
 
+        match.setTeamId(getTeamId());
         Match saved = repo.save(match);
         return ResponseEntity.ok(saved);
     }
 
-    // ✅ Patch DTO (safer than binding directly to Match)
     public static class MatchPatch {
-        public LocalDate date;          // must be "YYYY-MM-DD" if sent
+        public LocalDate date;
         public String opponent;
-        public Boolean home;            // nullable so omitted doesn’t become false
-        public Integer goalsFor;         // nullable allowed
-        public Integer goalsAgainst;     // nullable allowed
+        public Boolean home;
+        public Integer goalsFor;
+        public Integer goalsAgainst;
     }
 
     @PutMapping("/{id}")
@@ -64,7 +65,6 @@ public class MatchController {
                     if (patch.opponent != null) existing.setOpponent(patch.opponent);
                     if (patch.home != null) existing.setHome(patch.home);
 
-                    // allow nulls (blank score)
                     existing.setGoalsFor(patch.goalsFor);
                     existing.setGoalsAgainst(patch.goalsAgainst);
 
@@ -98,6 +98,12 @@ public class MatchController {
         }
         repo.deleteAllById(request.ids);
         return ResponseEntity.ok().build();
+    }
+
+    private Long getTeamId() {
+        String principal = (String) SecurityContextHolder
+            .getContext().getAuthentication().getPrincipal();
+        return Long.valueOf(principal.split(":")[1]);
     }
 }
 

@@ -17,6 +17,9 @@ public class Match {
     private Integer goalsFor;
     private Integer goalsAgainst;
 
+    @Column(name = "team_id", nullable = false)
+    private Long teamId;
+
     public Match() {}
 
     public Match(Long id, LocalDate date, String opponent, boolean home, Integer goalsFor, Integer goalsAgainst) {
@@ -45,4 +48,7 @@ public class Match {
 
     public Integer getGoalsAgainst() { return goalsAgainst; }
     public void setGoalsAgainst(Integer goalsAgainst) { this.goalsAgainst = goalsAgainst; }
+
+    public Long getTeamId() { return teamId; }
+    public void setTeamId(Long teamId) { this.teamId = teamId; }
 }

@@ -3,6 +3,7 @@ package com.localxi.local_xi_backend.controller;
 import com.localxi.local_xi_backend.model.Formation;
 import com.localxi.local_xi_backend.repository.FormationRepository;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashSet;
@@ -26,7 +27,7 @@ public class FormationController {
 
     @GetMapping
     public List<Formation> getFormations() {
-        return repo.findAll();
+        return repo.findAllByTeamId(getTeamId());
     }
 
     @PostMapping
@@ -36,6 +37,7 @@ public class FormationController {
             return ResponseEntity.badRequest().body(validation);
         }
 
+        formation.setTeamId(getTeamId());
         Formation saved = repo.save(formation);
         return ResponseEntity.ok(saved);
     }
@@ -67,7 +69,6 @@ public class FormationController {
         return ResponseEntity.ok().build();
     }
 
-    // ✅ centralised validation (slotId + position required)
     private String validateFormation(Formation formation) {
         if (formation.getName() == null || formation.getName().trim().isEmpty()) {
             return "Formation name is required";
@@ -79,7 +80,6 @@ public class FormationController {
             return "Formation must include slots";
         }
 
-        // slotId required + unique, position required
         Set<String> seen = new HashSet<>();
         for (var s : formation.getSlots()) {
             if (s.getSlotId() == null || s.getSlotId().trim().isEmpty()) {
@@ -99,6 +99,12 @@ public class FormationController {
 
     public static class IdsRequest {
         public List<Long> ids;
+    }
+
+    private Long getTeamId() {
+        String principal = (String) SecurityContextHolder
+            .getContext().getAuthentication().getPrincipal();
+        return Long.valueOf(principal.split(":")[1]);
     }
 }
 

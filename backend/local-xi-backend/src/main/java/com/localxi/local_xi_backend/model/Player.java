@@ -25,8 +25,11 @@ public class Player {
     @Column(name = "position", nullable = false)
     private List<String> positions = new ArrayList<>();
 
-    @Column(nullable = false, unique = true)
+    @Column(nullable = false)
     private int number;
+
+    @Column(name = "team_id", nullable = false)
+    private Long teamId;
 
     public Player() {}
 
@@ -50,5 +53,8 @@ public class Player {
 
     public int getNumber() { return number; }
     public void setNumber(int number) { this.number = number; }
+
+    public Long getTeamId() { return teamId; }
+    public void setTeamId(Long teamId) { this.teamId = teamId; }
 }
 

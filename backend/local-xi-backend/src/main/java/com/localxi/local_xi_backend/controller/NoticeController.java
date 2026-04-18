@@ -28,8 +28,7 @@ public class NoticeController {
 
     @GetMapping
     public ResponseEntity<?> listForMyTeam() {
-        String userIdStr = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        Long userId = Long.valueOf(userIdStr);
+        Long userId = getUserId();
 
         var userOpt = users.findById(userId);
         if (userOpt.isEmpty()) return ResponseEntity.status(401).build();
@@ -46,8 +45,7 @@ public class NoticeController {
 
     @PostMapping
     public ResponseEntity<?> create(@RequestBody CreateNoticeRequest req) {
-        String userIdStr = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        Long userId = Long.valueOf(userIdStr);
+        Long userId = getUserId();
 
         var userOpt = users.findById(userId);
         if (userOpt.isEmpty()) return ResponseEntity.status(401).build();
@@ -68,8 +66,7 @@ public class NoticeController {
 
     @DeleteMapping("/{id}")
     public ResponseEntity<?> delete(@PathVariable Long id) {
-        String userIdStr = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        Long userId = Long.valueOf(userIdStr);
+        Long userId = getUserId();
 
         var userOpt = users.findById(userId);
         if (userOpt.isEmpty()) return ResponseEntity.status(401).build();
@@ -87,5 +84,11 @@ public class NoticeController {
 
         notices.delete(notice);
         return ResponseEntity.ok().build();
+    }
+
+    private Long getUserId() {
+        String principal = (String) SecurityContextHolder
+            .getContext().getAuthentication().getPrincipal();
+        return Long.valueOf(principal.split(":")[0]);
     }
 }

@@ -1,6 +1,10 @@
 package com.localxi.local_xi_backend.controller;
 
+import com.localxi.local_xi_backend.model.AppUser;
+import com.localxi.local_xi_backend.model.Role;
+import com.localxi.local_xi_backend.model.Team;
 import com.localxi.local_xi_backend.repository.AppUserRepository;
+import com.localxi.local_xi_backend.repository.TeamRepository;
 import com.localxi.local_xi_backend.security.JwtService;
 import com.localxi.local_xi_backend.security.LoginRateLimiter;
 import jakarta.servlet.http.HttpServletRequest;
@@ -20,12 +24,15 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
 
     private final AppUserRepository users;
+    private final TeamRepository teamRepo;
     private final PasswordEncoder encoder;
     private final JwtService jwt;
     private final LoginRateLimiter limiter;
 
-    public AuthController(AppUserRepository users, PasswordEncoder encoder, JwtService jwt, LoginRateLimiter limiter) {
+    public AuthController(AppUserRepository users, TeamRepository teamRepo,
+                          PasswordEncoder encoder, JwtService jwt, LoginRateLimiter limiter) {
         this.users = users;
+        this.teamRepo = teamRepo;
         this.encoder = encoder;
         this.jwt = jwt;
         this.limiter = limiter;
@@ -44,6 +51,12 @@ public class AuthController {
         public Long userId;
     }
 
+    public static class RegisterRequest {
+        public String teamName;
+        public String email;
+        public String password;
+    }
+
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody LoginRequest req, HttpServletRequest httpReq) {
         if (req == null || req.email == null || req.password == null) {
@@ -53,7 +66,6 @@ public class AuthController {
         String email = req.email.trim().toLowerCase();
         String ip = clientIp(httpReq);
 
-        // ✅ rate limit check first
         if (limiter.isLocked(email, ip)) {
             long retryAfter = limiter.secondsUntilUnlock(email, ip);
 
@@ -68,7 +80,6 @@ public class AuthController {
 
         var userOpt = users.findByEmail(email);
         if (userOpt.isEmpty()) {
-            // ✅ count as a failure (prevents email enumeration abuse)
             limiter.recordFailure(email, ip);
             return ResponseEntity.status(401).body("invalid credentials");
         }
@@ -80,7 +91,6 @@ public class AuthController {
             return ResponseEntity.status(401).body("invalid credentials");
         }
 
-        // ✅ success -> clear failures
         limiter.recordSuccess(email, ip);
 
         String token = jwt.createToken(user);
@@ -95,8 +105,33 @@ public class AuthController {
         return ResponseEntity.ok(out);
     }
 
-    // Very simple IP getter (good enough for localhost/dev).
-    // If you deploy behind a proxy later, you'd handle X-Forwarded-For properly.
+    @PostMapping("/register")
+    public ResponseEntity<?> register(@RequestBody RegisterRequest req) {
+        if (req.teamName == null || req.teamName.isBlank() ||
+            req.email == null || req.email.isBlank() ||
+            req.password == null || req.password.length() < 8) {
+            return ResponseEntity.badRequest()
+                .body("teamName, email, and password (min 8 chars) are required");
+        }
+
+        String email = req.email.trim().toLowerCase();
+        if (users.findByEmail(email).isPresent()) {
+            return ResponseEntity.badRequest().body("email already registered");
+        }
+
+        Team team = new Team(req.teamName.trim());
+        teamRepo.save(team);
+
+        AppUser manager = new AppUser();
+        manager.setEmail(email);
+        manager.setPasswordHash(encoder.encode(req.password));
+        manager.setRole(Role.MANAGER);
+        manager.setTeam(team);
+        users.save(manager);
+
+        return ResponseEntity.ok("Team registered successfully");
+    }
+
     private String clientIp(HttpServletRequest req) {
         String xf = req.getHeader("X-Forwarded-For");
         if (xf != null && !xf.isBlank()) {
