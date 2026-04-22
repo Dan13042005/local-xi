@@ -33,91 +33,96 @@ export function TopPerformerLeaderboard() {
 
   useEffect(() => {
     async function load() {
-      setLoading(true);
+      try {
+        setLoading(true);
 
-      const [matches, players] = await Promise.all([getMatches(), getPlayers()]);
+        const [matches, players] = await Promise.all([getMatches(), getPlayers()]);
 
-      const playerMap = new Map(players.map((p) => [p.id, p]));
-      const agg = new Map<number, Aggregated>();
+        const playerMap = new Map(players.map((p) => [p.id, p]));
+        const agg = new Map<number, Aggregated>();
 
-      function ensureRow(playerId: number): Aggregated | null {
-        const p = playerMap.get(playerId);
-        if (!p) return null;
+        function ensureRow(playerId: number): Aggregated | null {
+          const p = playerMap.get(playerId);
+          if (!p) return null;
 
-        if (!agg.has(playerId)) {
-          agg.set(playerId, {
-            playerId,
-            name: p.name,
-            number: p.number,
-            goals: 0,
-            assists: 0,
-            yellowCards: 0,
-            redCards: 0,
-            totalRating: 0,
-            ratingCount: 0,
-            potm: 0,
-          });
+          if (!agg.has(playerId)) {
+            agg.set(playerId, {
+              playerId,
+              name: p.name,
+              number: p.number,
+              goals: 0,
+              assists: 0,
+              yellowCards: 0,
+              redCards: 0,
+              totalRating: 0,
+              ratingCount: 0,
+              potm: 0,
+            });
+          }
+
+          return agg.get(playerId)!;
         }
 
-        return agg.get(playerId)!;
+        for (const match of matches) {
+          const lineup = await getLineupForMatch(match.id);
+          if (!lineup) continue;
+
+          const matchRatings = new Map<number, number>();
+
+          for (const slot of lineup.slots ?? []) {
+            if (slot.playerId == null) continue;
+
+            ensureRow(slot.playerId);
+
+            if (typeof slot.rating === "number") {
+              matchRatings.set(slot.playerId, slot.rating);
+            }
+          }
+
+          for (const stat of lineup.playerStats ?? []) {
+            const row = ensureRow(stat.playerId);
+            if (!row) continue;
+
+            row.goals += stat.goals ?? 0;
+            row.assists += stat.assists ?? 0;
+            row.yellowCards += stat.yellowCards ?? 0;
+            row.redCards += stat.redCards ?? 0;
+
+            if (typeof stat.rating === "number") {
+              matchRatings.set(stat.playerId, stat.rating);
+            }
+          }
+
+          for (const [playerId, rating] of matchRatings.entries()) {
+            const row = ensureRow(playerId);
+            if (!row) continue;
+
+            row.totalRating += rating;
+            row.ratingCount += 1;
+          }
+
+          let bestPlayerId: number | null = null;
+          let bestRating: number | null = null;
+
+          for (const [playerId, rating] of matchRatings.entries()) {
+            if (bestRating == null || rating > bestRating) {
+              bestRating = rating;
+              bestPlayerId = playerId;
+            }
+          }
+
+          if (bestPlayerId != null) {
+            const row = ensureRow(bestPlayerId);
+            if (row) row.potm += 1;
+          }
+        }
+
+        setRows(Array.from(agg.values()));
+      } catch (e) {
+        console.error("Leaderboard failed to load:", e);
+      } finally {
+        setLoading(false);
       }
-
-      for (const match of matches) {
-        const lineup = await getLineupForMatch(match.id);
-        if (!lineup) continue;
-
-        const matchRatings = new Map<number, number>();
-
-        for (const slot of lineup.slots ?? []) {
-          if (slot.playerId == null) continue;
-
-          ensureRow(slot.playerId);
-
-          if (typeof slot.rating === "number") {
-            matchRatings.set(slot.playerId, slot.rating);
-          }
-        }
-
-        for (const stat of lineup.playerStats ?? []) {
-          const row = ensureRow(stat.playerId);
-          if (!row) continue;
-
-          row.goals += stat.goals ?? 0;
-          row.assists += stat.assists ?? 0;
-          row.yellowCards += stat.yellowCards ?? 0;
-          row.redCards += stat.redCards ?? 0;
-
-          if (typeof stat.rating === "number") {
-            matchRatings.set(stat.playerId, stat.rating);
-          }
-        }
-
-        for (const [playerId, rating] of matchRatings.entries()) {
-          const row = ensureRow(playerId);
-          if (!row) continue;
-
-          row.totalRating += rating;
-          row.ratingCount += 1;
-        }
-
-        let bestPlayerId: number | null = null;
-        let bestRating: number | null = null;
-
-        for (const [playerId, rating] of matchRatings.entries()) {
-          if (bestRating == null || rating > bestRating) {
-            bestRating = rating;
-            bestPlayerId = playerId;
-          }
-        }
-
-        if (bestPlayerId != null) {
-          const row = ensureRow(bestPlayerId);
-          if (row) row.potm += 1;
-        }
-      }
-
-      setRows(Array.from(agg.values()));
-      setLoading(false);
     }
 
     load();

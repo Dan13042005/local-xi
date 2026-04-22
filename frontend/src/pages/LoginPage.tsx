@@ -83,7 +83,7 @@ export default function LoginPage({ onLoggedIn }: Props) {
   }
 
   return (
-    <div style={{ maxWidth: 420, margin: "24px auto" }}>
+    <div style={{ maxWidth: 420, margin: "80px auto", width: "100%" }}>
       {mode === "login" ? (
         <>
           <h2>Sign in</h2>

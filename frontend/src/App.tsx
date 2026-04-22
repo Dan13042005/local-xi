@@ -83,7 +83,7 @@ export default function App() {
               </div>
             ) : null}
 
-            <div className="card authCard">
+            <div className="card authCard" style={{ width: "100%", maxWidth: "100%", display: "flex", justifyContent: "center" }}>
               <LoginPage onLoggedIn={handleLoggedIn} />
             </div>
           </main>

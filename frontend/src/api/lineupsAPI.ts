@@ -10,7 +10,7 @@ export type LineupSummary = {
 function isNotFoundError(e: unknown): boolean {
   const msg = e instanceof Error ? e.message : String(e);
   // matches your apiFetch error style: "Request failed (404)" or backend text containing 404
-  return msg.includes("404") || msg.toLowerCase().includes("not found");
+  return msg.includes("404") || msg.toLowerCase().includes("not found") || msg.toLowerCase().includes("no lineup");
 }
 
 // Get lineup for one match

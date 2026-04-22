@@ -404,14 +404,31 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
       matchId,
       formationId: selectedFormation.id,
       slots,
-      playerStats: toPlayerStatsArray(playerStatsById).filter(
-        (s) =>
-          (s.goals ?? 0) > 0 ||
-          (s.assists ?? 0) > 0 ||
-          (s.yellowCards ?? 0) > 0 ||
-          (s.redCards ?? 0) > 0 ||
-          s.rating != null
-      ),
+      // AFTER
+      playerStats: (() => {
+        // Always include every player assigned to a pitch slot
+        const pitchPlayerIds = new Set(
+          slots.map((s) => s.playerId).filter((id): id is number => id != null)
+        );
+
+        // Merge pitch players with any stats entered
+        const allIds = new Set([
+          ...pitchPlayerIds,
+          ...Object.keys(playerStatsById).map(Number),
+        ]);
+
+        return Array.from(allIds).map((playerId) => {
+          const st = playerStatsById[playerId] ?? emptyPlayerStats();
+          return {
+            playerId,
+            goals: st.goals ?? null,
+            assists: st.assists ?? null,
+            yellowCards: st.yellowCards ?? null,
+            redCards: st.redCards ?? null,
+            rating: st.rating ?? null,
+          };
+        });
+      })(),
     };
 
     setSaving(true);

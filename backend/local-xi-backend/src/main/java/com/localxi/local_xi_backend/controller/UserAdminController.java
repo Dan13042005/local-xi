@@ -1,12 +1,18 @@
 package com.localxi.local_xi_backend.controller;
 
-import com.localxi.local_xi_backend.model.AppUser;
-import com.localxi.local_xi_backend.model.Role;
-import com.localxi.local_xi_backend.repository.AppUserRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.localxi.local_xi_backend.model.AppUser;
+import com.localxi.local_xi_backend.model.Role;
+import com.localxi.local_xi_backend.repository.AppUserRepository;
 
 @CrossOrigin(
         origins = "http://localhost:5173",
@@ -38,7 +44,7 @@ public class UserAdminController {
         String managerUserIdStr =
                 (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
 
-        Long managerUserId = Long.valueOf(managerUserIdStr);
+        Long managerUserId = Long.valueOf(managerUserIdStr.split(":")[0]);
 
         var managerOpt = users.findById(managerUserId);
         if (managerOpt.isEmpty()) {
