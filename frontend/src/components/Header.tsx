@@ -1,9 +1,10 @@
 type HeaderProps = {
   title: string;
   subtitle?: string;
+  role?: string | null;
 };
 
-export function Header({ title, subtitle }: HeaderProps) {
+export function Header({ title, subtitle, role }: HeaderProps) {
   return (
     <header className="app-header">
       <div className="header-inner">
@@ -13,7 +14,7 @@ export function Header({ title, subtitle }: HeaderProps) {
         </div>
 
         <div className="header-badge">
-          ⚽ Team Manager
+          ⚽ {role === "PLAYER" ? "Team Player" : "Team Manager"}
         </div>
       </div>
     </header>

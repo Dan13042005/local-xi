@@ -608,8 +608,6 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
                         onDragStart={(e) => {
                           e.dataTransfer.setData("text/plain", `player:${p.id}`);
                           e.dataTransfer.effectAllowed = "copy";
-                          setSelectedBenchPlayerId(p.id);
-                          setSelectedSlotId(null);
                         }}
                         onClick={() => handleBenchClick(p.id)}
                         style={{

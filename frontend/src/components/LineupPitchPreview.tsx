@@ -206,7 +206,8 @@ export function LineupPitchPreview({
         onDragOver={(e) => {
           if (!onSwapSlots && !onDropPlayerToSlot) return;
           e.preventDefault();
-          e.dataTransfer.dropEffect = "move";
+          // support both bench (copy) and slot swap (move)
+          e.dataTransfer.dropEffect = "copy";
         }}
         onDrop={(e) => {
           e.preventDefault();

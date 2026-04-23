@@ -58,7 +58,7 @@ export default function App() {
   function handleLogout() {
     clearSession();
     setTokenState(null);
-    setFlash("You’ve been logged out.");
+    setFlash("You've been logged out.");
   }
 
   function handleLoggedIn() {
@@ -74,7 +74,7 @@ export default function App() {
     return (
       <div className="app">
         <div className="shell card">
-          <Header title="Local XI" subtitle={subtitle} />
+          <Header title="Local XI" subtitle={subtitle} role={getRole()} />
 
           <main className="app-main">
             {flash ? (
@@ -95,7 +95,7 @@ export default function App() {
   return (
     <div className="app">
       <div className="shell card">
-        <Header title="Local XI" subtitle={subtitle} />
+        <Header title="Local XI" subtitle={subtitle} role={getRole()} />
         <Nav active={active} onChange={setActive} />
 
         <main className="app-main">
