@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Player } from "../models/Players";
 import { createPlayer, deletePlayers, getPlayers } from "../api/playersAPI";
 import { getPlayerTotals, type PlayerTotals } from "../api/playerStatsAPI";
+import { apiFetch } from "../api/http";
 
 const POSITIONS = [
   "GK",
@@ -34,38 +35,39 @@ export function PlayersPage() {
 
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
 
-  // ✅ totals cache keyed by playerId
+  // totals cache keyed by playerId
   const [totalsById, setTotalsById] = useState<Record<number, PlayerTotals>>({});
   const [totalsLoadingById, setTotalsLoadingById] = useState<Record<number, boolean>>({});
 
-  // ✅ role gate (PLAYER = read-only, MANAGER = edit)
+  // create player account state
+  const [accountEmail, setAccountEmail] = useState("");
+  const [accountPassword, setAccountPassword] = useState("");
+  const [accountError, setAccountError] = useState("");
+  const [accountSuccess, setAccountSuccess] = useState("");
+  const [accountLoading, setAccountLoading] = useState(false);
+  const [showAccountForm, setShowAccountForm] = useState(false);
+
+  // role gate (PLAYER = read-only, MANAGER = edit)
   const role = localStorage.getItem("role");
   const isManager = role === "MANAGER";
 
   async function refreshPlayers() {
     try {
       const data = await getPlayers();
-
-      // keep UI consistent
       const sorted = [...data].sort((a, b) => a.number - b.number);
       setPlayers(sorted);
-
-      // if some selected IDs no longer exist, remove them
       const validIds = new Set(sorted.map((p) => p.id));
       setSelectedIds((prev) => prev.filter((id) => validIds.has(id)));
-
       setError("");
     } catch (e) {
       setError(getErrorMessage(e));
     }
   }
 
-  // ✅ public totals refresh (button + focus-trigger)
   async function refreshTotals() {
     const ids = players.map((p) => p.id);
     if (ids.length === 0) return;
 
-    // mark loading for all
     setTotalsLoadingById((prev) => {
       const next = { ...prev };
       for (const id of ids) next[id] = true;
@@ -74,7 +76,6 @@ export function PlayersPage() {
 
     const results = await Promise.allSettled(ids.map((id) => getPlayerTotals(id)));
 
-    // store successes
     setTotalsById((prev) => {
       const next = { ...prev };
       results.forEach((res, idx) => {
@@ -84,7 +85,6 @@ export function PlayersPage() {
       return next;
     });
 
-    // clear loading for all
     setTotalsLoadingById((prev) => {
       const next = { ...prev };
       for (const id of ids) next[id] = false;
@@ -92,7 +92,6 @@ export function PlayersPage() {
     });
   }
 
-  // Load players once on page load
   useEffect(() => {
     (async () => {
       try {
@@ -104,7 +103,6 @@ export function PlayersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ✅ Fetch totals for players we haven't loaded yet (stable; won't get stuck)
   useEffect(() => {
     let cancelled = false;
 
@@ -114,7 +112,6 @@ export function PlayersPage() {
 
     if (idsToFetch.length === 0) return;
 
-    // mark loading for these ids
     setTotalsLoadingById((prev) => {
       const next = { ...prev };
       for (const id of idsToFetch) next[id] = true;
@@ -146,10 +143,8 @@ export function PlayersPage() {
     };
   }, [players, totalsById]);
 
-  // ✅ When you come back to the window/tab, refresh totals
   useEffect(() => {
     const onFocus = () => {
-      // refresh totals when returning from Matches page after saving
       refreshTotals().catch(() => {});
     };
     window.addEventListener("focus", onFocus);
@@ -176,7 +171,6 @@ export function PlayersPage() {
     try {
       await deletePlayers(selectedIds);
 
-      // remove deleted totals from cache
       setTotalsById((prev) => {
         const next = { ...prev };
         for (const id of selectedIds) delete next[id];
@@ -196,10 +190,34 @@ export function PlayersPage() {
     }
   }
 
-  // ---------- disable Add Player until form is valid ----------
+  async function handleCreateAccount(e: React.FormEvent) {
+    e.preventDefault();
+    setAccountError("");
+    setAccountSuccess("");
+    setAccountLoading(true);
+
+    try {
+      await apiFetch("/api/users", {
+        method: "POST",
+        body: JSON.stringify({
+          email: accountEmail.trim().toLowerCase(),
+          password: accountPassword,
+          role: "PLAYER",
+        }),
+      });
+
+      setAccountSuccess(`Player account created for ${accountEmail.trim().toLowerCase()}.`);
+      setAccountEmail("");
+      setAccountPassword("");
+    } catch (e) {
+      setAccountError(getErrorMessage(e));
+    } finally {
+      setAccountLoading(false);
+    }
+  }
+
   const trimmedName = name.trim();
   const numberAsNumber = Number(number);
-
   const numberTaken = players.some((p) => p.number === numberAsNumber);
 
   const canSubmit =
@@ -221,7 +239,6 @@ export function PlayersPage() {
       : numberTaken
       ? "That shirt number is already taken."
       : "";
-  // ---------------------------------------------------------------
 
   async function addPlayer(e: React.FormEvent) {
     e.preventDefault();
@@ -328,7 +345,65 @@ export function PlayersPage() {
         </form>
       ) : null}
 
-      {/* ✅ Manual refresh for totals (read-only friendly) */}
+      {isManager ? (
+        <div className="card" style={{ marginTop: 12 }}>
+          <div
+            style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
+            onClick={() => { setShowAccountForm((v) => !v); setAccountError(""); setAccountSuccess(""); }}
+          >
+            <strong>Create Player Account</strong>
+            <span style={{ opacity: 0.6, fontSize: 13 }}>{showAccountForm ? "▲ Hide" : "▼ Show"}</span>
+          </div>
+
+          {showAccountForm ? (
+            <form onSubmit={handleCreateAccount} style={{ marginTop: 12 }}>
+              <p style={{ opacity: 0.7, fontSize: 13, marginBottom: 12 }}>
+                Create a login for a squad member so they can sign in and view the team.
+              </p>
+
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+                <label style={{ flex: "1 1 200px" }}>
+                  Email
+                  <input
+                    type="email"
+                    value={accountEmail}
+                    onChange={(e) => setAccountEmail(e.target.value)}
+                    placeholder="player@example.com"
+                    style={{ width: "100%" }}
+                    required
+                  />
+                </label>
+
+                <label style={{ flex: "1 1 200px" }}>
+                  Password (min 8 characters)
+                  <input
+                    type="password"
+                    value={accountPassword}
+                    onChange={(e) => setAccountPassword(e.target.value)}
+                    placeholder="Min 8 characters"
+                    style={{ width: "100%" }}
+                    minLength={8}
+                    required
+                  />
+                </label>
+
+                <button
+                  type="submit"
+                  className="primary"
+                  disabled={accountLoading}
+                  style={{ alignSelf: "flex-end" }}
+                >
+                  {accountLoading ? "Creating..." : "Create Account"}
+                </button>
+              </div>
+
+              {accountError ? <p className="error" style={{ marginTop: 8 }}>{accountError}</p> : null}
+              {accountSuccess ? <p style={{ color: "var(--accent)", marginTop: 8 }}>{accountSuccess}</p> : null}
+            </form>
+          ) : null}
+        </div>
+      ) : null}
+
       <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
         <button type="button" onClick={refreshTotals}>
           Refresh Totals

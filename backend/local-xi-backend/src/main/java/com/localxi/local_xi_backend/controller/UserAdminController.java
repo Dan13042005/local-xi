@@ -1,18 +1,12 @@
 package com.localxi.local_xi_backend.controller;
 
-import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.web.bind.annotation.CrossOrigin;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
-import org.springframework.web.bind.annotation.RestController;
-
 import com.localxi.local_xi_backend.model.AppUser;
 import com.localxi.local_xi_backend.model.Role;
 import com.localxi.local_xi_backend.repository.AppUserRepository;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.web.bind.annotation.*;
 
 @CrossOrigin(
         origins = "http://localhost:5173",
@@ -40,11 +34,11 @@ public class UserAdminController {
     @PostMapping
     public ResponseEntity<?> createUser(@RequestBody CreateUserRequest req) {
 
-        // userId stored as principal by JwtAuthFilter
-        String managerUserIdStr =
+        // principal is stored as "userId:teamId" by JwtAuthFilter
+        String principal =
                 (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
 
-        Long managerUserId = Long.valueOf(managerUserIdStr.split(":")[0]);
+        Long managerUserId = Long.valueOf(principal.split(":")[0]);
 
         var managerOpt = users.findById(managerUserId);
         if (managerOpt.isEmpty()) {
@@ -55,6 +49,10 @@ public class UserAdminController {
 
         if (req == null || req.email == null || req.password == null) {
             return ResponseEntity.badRequest().body("email and password are required");
+        }
+
+        if (req.password.length() < 8) {
+            return ResponseEntity.badRequest().body("password must be at least 8 characters");
         }
 
         String email = req.email.trim().toLowerCase();
