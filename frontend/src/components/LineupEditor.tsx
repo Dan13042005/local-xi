@@ -271,7 +271,17 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
 
   function setRating(slotId: string, raw: string) {
     const rating = parseRating(raw);
-    setSlots((prev) => prev.map((s) => (s.slotId === slotId ? { ...s, rating } : s)));
+
+    setSlots((prev) => {
+      const slot = prev.find((s) => s.slotId === slotId);
+      if (slot?.playerId != null) {
+        setPlayerStatsById((stats) => {
+          const curr = stats[slot.playerId!] ?? emptyPlayerStats();
+          return { ...stats, [slot.playerId!]: { ...curr, rating } };
+        });
+      }
+      return prev.map((s) => (s.slotId === slotId ? { ...s, rating } : s));
+    });
   }
 
   function setStatForPlayer(
@@ -324,9 +334,30 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
     setError("");
 
     if (selectedBenchPlayerId != null) {
-      setSlots((prev) =>
-        prev.map((s) => (s.slotId === clickedSlotId ? { ...s, playerId: selectedBenchPlayerId } : s))
-      );
+      setSlots((prev) => {
+        const targetSlot = prev.find((s) => s.slotId === clickedSlotId);
+        const displacedPlayerId = targetSlot?.playerId ?? null;
+        const displacedSlotRating = targetSlot?.rating ?? null;
+        const sourceSlot = prev.find((s) => s.playerId === selectedBenchPlayerId);
+        const incomingRating = playerStatsById[selectedBenchPlayerId]?.rating ?? null;
+
+        if (displacedPlayerId != null) {
+          setPlayerStatsById((stats) => {
+            const curr = stats[displacedPlayerId] ?? emptyPlayerStats();
+            return { ...stats, [displacedPlayerId]: { ...curr, rating: displacedSlotRating } };
+          });
+        }
+
+        return prev.map((s) => {
+          if (s.slotId === clickedSlotId) {
+            return { ...s, playerId: selectedBenchPlayerId, rating: incomingRating };
+          }
+          if (sourceSlot && s.slotId === sourceSlot.slotId) {
+            return { ...s, playerId: displacedPlayerId, rating: displacedPlayerId != null ? (playerStatsById[displacedPlayerId]?.rating ?? null) : null };
+          }
+          return s;
+        });
+      });
       setSelectedBenchPlayerId(null);
       setSelectedSlotId(null);
       return;
@@ -353,7 +384,30 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
 
   function handleDropPlayerToSlot(slotId: string, playerId: number) {
     setError("");
-    setSlots((prev) => prev.map((s) => (s.slotId === slotId ? { ...s, playerId } : s)));
+    setSlots((prev) => {
+      const targetSlot = prev.find((s) => s.slotId === slotId);
+      const displacedPlayerId = targetSlot?.playerId ?? null;
+      const displacedSlotRating = targetSlot?.rating ?? null;
+      const sourceSlot = prev.find((s) => s.playerId === playerId);
+      const incomingRating = playerStatsById[playerId]?.rating ?? null;
+
+      if (displacedPlayerId != null) {
+        setPlayerStatsById((stats) => {
+          const curr = stats[displacedPlayerId] ?? emptyPlayerStats();
+          return { ...stats, [displacedPlayerId]: { ...curr, rating: displacedSlotRating } };
+        });
+      }
+
+      return prev.map((s) => {
+        if (s.slotId === slotId) {
+          return { ...s, playerId, rating: incomingRating };
+        }
+        if (sourceSlot && s.slotId === sourceSlot.slotId) {
+          return { ...s, playerId: displacedPlayerId, rating: displacedPlayerId != null ? (playerStatsById[displacedPlayerId]?.rating ?? null) : null };
+        }
+        return s;
+      });
+    });
     setSelectedBenchPlayerId(null);
     setSelectedSlotId(null);
   }
@@ -404,14 +458,11 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
       matchId,
       formationId: selectedFormation.id,
       slots,
-      // AFTER
       playerStats: (() => {
-        // Always include every player assigned to a pitch slot
         const pitchPlayerIds = new Set(
           slots.map((s) => s.playerId).filter((id): id is number => id != null)
         );
 
-        // Merge pitch players with any stats entered
         const allIds = new Set([
           ...pitchPlayerIds,
           ...Object.keys(playerStatsById).map(Number),
@@ -504,11 +555,22 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
       </div>
     );
   }
+
   const smallNumStyle: React.CSSProperties = {
     width: "100%",
     borderRadius: 8,
     border: "1px solid rgba(0,0,0,0.2)",
     padding: "6px 8px",
+  };
+
+  const benchInputStyle: React.CSSProperties = {
+    borderRadius: 8,
+    border: "1px solid rgba(255,255,255,0.14)",
+    background: "rgba(255,255,255,0.06)",
+    color: "var(--text)",
+    padding: "6px 8px",
+    textAlign: "center",
+    width: "100%",
   };
 
   return (
@@ -598,7 +660,7 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
                         flexDirection: "column",
                         alignItems: "center",
                         gap: 6,
-                        minWidth: 110,
+                        minWidth: 130,
                         flex: "0 1 auto",
                       }}
                     >
@@ -635,6 +697,57 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
                         #{p.number} {p.name}
                       </button>
 
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, width: "100%" }}>
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          min={0}
+                          step={1}
+                          placeholder="G"
+                          value={benchStats.goals ?? ""}
+                          onChange={(e) => setStatForPlayer(p.id, "goals", e.target.value)}
+                          disabled={saving}
+                          style={benchInputStyle}
+                          title="Goals"
+                        />
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          min={0}
+                          step={1}
+                          placeholder="A"
+                          value={benchStats.assists ?? ""}
+                          onChange={(e) => setStatForPlayer(p.id, "assists", e.target.value)}
+                          disabled={saving}
+                          style={benchInputStyle}
+                          title="Assists"
+                        />
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          min={0}
+                          step={1}
+                          placeholder="YC"
+                          value={benchStats.yellowCards ?? ""}
+                          onChange={(e) => setStatForPlayer(p.id, "yellowCards", e.target.value)}
+                          disabled={saving}
+                          style={benchInputStyle}
+                          title="Yellow cards"
+                        />
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          min={0}
+                          step={1}
+                          placeholder="RC"
+                          value={benchStats.redCards ?? ""}
+                          onChange={(e) => setStatForPlayer(p.id, "redCards", e.target.value)}
+                          disabled={saving}
+                          style={benchInputStyle}
+                          title="Red cards"
+                        />
+                      </div>
+
                       <input
                         type="number"
                         step="0.1"
@@ -644,15 +757,7 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
                         value={benchStats.rating ?? ""}
                         onChange={(e) => setBenchPlayerRating(p.id, e.target.value)}
                         disabled={saving}
-                        style={{
-                          width: 80,
-                          borderRadius: 8,
-                          border: "1px solid rgba(255,255,255,0.14)",
-                          background: "rgba(255,255,255,0.06)",
-                          color: "var(--text)",
-                          padding: "6px 8px",
-                          textAlign: "center",
-                        }}
+                        style={{ ...benchInputStyle, width: "100%" }}
                         title="Bench player match rating"
                       />
                     </div>
@@ -805,3 +910,4 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
     </div>
   );
 }
+
