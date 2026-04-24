@@ -139,6 +139,8 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
 
   const pitchRef = useRef<HTMLDivElement | null>(null);
 
+  const isManager = localStorage.getItem("role") === "MANAGER";
+
   const selectedFormation = useMemo(
     () => formations.find((f) => f.id === formationId) ?? null,
     [formations, formationId]
@@ -331,6 +333,7 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
   }
 
   function handlePitchSlotClick(clickedSlotId: string) {
+    if (!isManager) return;
     setError("");
 
     if (selectedBenchPlayerId != null) {
@@ -377,12 +380,14 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
   }
 
   function handleBenchClick(playerId: number) {
+    if (!isManager) return;
     setError("");
     setSelectedSlotId(null);
     setSelectedBenchPlayerId((prev) => (prev === playerId ? null : playerId));
   }
 
   function handleDropPlayerToSlot(slotId: string, playerId: number) {
+    if (!isManager) return;
     setError("");
     setSlots((prev) => {
       const targetSlot = prev.find((s) => s.slotId === slotId);
@@ -579,8 +584,9 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
         <div style={{ flex: "1 1 320px", minWidth: 0 }}>
           <strong>Lineup for match #{matchId}</strong>
           <div style={{ opacity: 0.8, fontSize: 13, marginTop: 4 }}>
-            Bench click → pitch click assigns. Pitch click → pitch click swaps. Drag bench player onto a pitch pill to
-            assign. Drag pitch pill onto another to swap.
+            {isManager
+              ? "Bench click → pitch click assigns. Pitch click → pitch click swaps. Drag bench player onto a pitch pill to assign. Drag pitch pill onto another to swap."
+              : "View only — only managers can edit the lineup."}
           </div>
         </div>
 
@@ -601,7 +607,7 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
           <select
             value={formationId ?? ""}
             onChange={(e) => changeFormation(Number(e.target.value))}
-            disabled={saving || formations.length === 0}
+            disabled={saving || formations.length === 0 || !isManager}
             style={{ width: "100%" }}
           >
             {formations.length === 0 ? (
@@ -626,10 +632,10 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
               formation={selectedFormation}
               slots={slotsForDisplay}
               players={players}
-              onSlotClick={handlePitchSlotClick}
+              onSlotClick={isManager ? handlePitchSlotClick : undefined}
               selectedSlotId={selectedSlotId}
-              onSwapSlots={swapSlots}
-              onDropPlayerToSlot={handleDropPlayerToSlot}
+              onSwapSlots={isManager ? swapSlots : undefined}
+              onDropPlayerToSlot={isManager ? handleDropPlayerToSlot : undefined}
               exportRef={pitchRef}
             />
 
@@ -666,11 +672,11 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
                     >
                       <button
                         type="button"
-                        draggable
-                        onDragStart={(e) => {
+                        draggable={isManager}
+                        onDragStart={isManager ? (e) => {
                           e.dataTransfer.setData("text/plain", `player:${p.id}`);
                           e.dataTransfer.effectAllowed = "copy";
-                        }}
+                        } : undefined}
                         onClick={() => handleBenchClick(p.id)}
                         style={{
                           borderRadius: 999,
@@ -685,7 +691,7 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
                           boxShadow: active
                             ? "0 0 0 4px var(--accent-glow), 0 10px 22px rgba(0, 0, 0, 0.35)"
                             : "0 10px 22px rgba(0, 0, 0, 0.35)",
-                          cursor: "grab",
+                          cursor: isManager ? "grab" : "default",
                           fontWeight: 800,
                           whiteSpace: "nowrap",
                           minWidth: 110,
@@ -706,7 +712,7 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
                           placeholder="G"
                           value={benchStats.goals ?? ""}
                           onChange={(e) => setStatForPlayer(p.id, "goals", e.target.value)}
-                          disabled={saving}
+                          disabled={saving || !isManager}
                           style={benchInputStyle}
                           title="Goals"
                         />
@@ -718,7 +724,7 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
                           placeholder="A"
                           value={benchStats.assists ?? ""}
                           onChange={(e) => setStatForPlayer(p.id, "assists", e.target.value)}
-                          disabled={saving}
+                          disabled={saving || !isManager}
                           style={benchInputStyle}
                           title="Assists"
                         />
@@ -730,7 +736,7 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
                           placeholder="YC"
                           value={benchStats.yellowCards ?? ""}
                           onChange={(e) => setStatForPlayer(p.id, "yellowCards", e.target.value)}
-                          disabled={saving}
+                          disabled={saving || !isManager}
                           style={benchInputStyle}
                           title="Yellow cards"
                         />
@@ -742,7 +748,7 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
                           placeholder="RC"
                           value={benchStats.redCards ?? ""}
                           onChange={(e) => setStatForPlayer(p.id, "redCards", e.target.value)}
-                          disabled={saving}
+                          disabled={saving || !isManager}
                           style={benchInputStyle}
                           title="Red cards"
                         />
@@ -756,7 +762,7 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
                         placeholder="Rating"
                         value={benchStats.rating ?? ""}
                         onChange={(e) => setBenchPlayerRating(p.id, e.target.value)}
-                        disabled={saving}
+                        disabled={saving || !isManager}
                         style={{ ...benchInputStyle, width: "100%" }}
                         title="Bench player match rating"
                       />
@@ -796,7 +802,7 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
                         const v = e.target.value;
                         setPlayer(slotMeta.slotId, v === "" ? null : Number(v));
                       }}
-                      disabled={saving}
+                      disabled={saving || !isManager}
                     >
                       <option value="">— Unassigned —</option>
                       {players.map((p) => {
@@ -817,7 +823,7 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
                       placeholder="0–10"
                       value={slot.rating ?? ""}
                       onChange={(e) => setRating(slotMeta.slotId, e.target.value)}
-                      disabled={saving}
+                      disabled={saving || !isManager}
                       style={smallNumStyle}
                     />
 
@@ -826,7 +832,7 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
                         type="checkbox"
                         checked={slot.isCaptain}
                         onChange={() => setCaptain(slotMeta.slotId)}
-                        disabled={saving}
+                        disabled={saving || !isManager}
                       />
                       Captain
                     </label>
@@ -839,7 +845,7 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
                       placeholder="G"
                       value={stats.goals ?? ""}
                       onChange={(e) => setStatForPlayer(slot.playerId ?? null, "goals", e.target.value)}
-                      disabled={saving || slot.playerId == null}
+                      disabled={saving || !isManager || slot.playerId == null}
                       style={smallNumStyle}
                       title="Goals"
                     />
@@ -852,7 +858,7 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
                       placeholder="A"
                       value={stats.assists ?? ""}
                       onChange={(e) => setStatForPlayer(slot.playerId ?? null, "assists", e.target.value)}
-                      disabled={saving || slot.playerId == null}
+                      disabled={saving || !isManager || slot.playerId == null}
                       style={smallNumStyle}
                       title="Assists"
                     />
@@ -865,7 +871,7 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
                       placeholder="YC"
                       value={stats.yellowCards ?? ""}
                       onChange={(e) => setStatForPlayer(slot.playerId ?? null, "yellowCards", e.target.value)}
-                      disabled={saving || slot.playerId == null}
+                      disabled={saving || !isManager || slot.playerId == null}
                       style={smallNumStyle}
                       title="Yellow cards"
                     />
@@ -878,7 +884,7 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
                       placeholder="RC"
                       value={stats.redCards ?? ""}
                       onChange={(e) => setStatForPlayer(slot.playerId ?? null, "redCards", e.target.value)}
-                      disabled={saving || slot.playerId == null}
+                      disabled={saving || !isManager || slot.playerId == null}
                       style={smallNumStyle}
                       title="Red cards"
                     />
@@ -891,12 +897,14 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
       )}
 
       <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
-        <button type="button" className="primary" onClick={handleSave} disabled={saving || !selectedFormation}>
-          {saving ? "Saving..." : "Save Lineup"}
-        </button>
+        {isManager ? (
+          <button type="button" className="primary" onClick={handleSave} disabled={saving || !selectedFormation}>
+            {saving ? "Saving..." : "Save Lineup"}
+          </button>
+        ) : null}
 
         <button type="button" onClick={onClose} disabled={saving}>
-          Cancel
+          Close
         </button>
 
         <button type="button" onClick={handleExportPng} disabled={!selectedFormation || saving}>
@@ -910,4 +918,3 @@ export function LineupEditor({ matchId, onClose, onSaved }: Props) {
     </div>
   );
 }
-
