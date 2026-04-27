@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Set;
 
 @CrossOrigin(
-        origins = "*",
+        origins = "https://local-xi-production.up.railway.app",
         allowedHeaders = "*",
         methods = {RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.DELETE}
 )

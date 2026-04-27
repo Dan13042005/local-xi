@@ -10,7 +10,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 @CrossOrigin(
-        origins = "*",
+        origins = "https://local-xi-production.up.railway.app",
         allowedHeaders = "*",
         methods = {RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.DELETE}
 )
